@@ -1,0 +1,12 @@
+services:
+  power_usage_tracker_container:
+    build: .
+    image: power_usage_tracker
+    ports:
+      - "8800:5000"
+    volumes:
+      - ./power_usage_tracker:/app
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Kolkata

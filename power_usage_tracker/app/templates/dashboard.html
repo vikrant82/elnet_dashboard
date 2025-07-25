@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Power Usage Dashboard</title>
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.16.0.min.js"></script>
+    <!-- Add mobile-specific CSS in head -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1, h2, h3 {
+            color: #1c1e21;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .cards-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            flex: 1;
+            min-width: 280px;
+            max-width: 320px;
+        }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 1.5rem;
+        }
+
+        .card p {
+            font-size: 1.1rem;
+            margin: 10px 0;
+        }
+
+        .card strong {
+            color: #056be1;
+        }
+
+        @media (max-width: 768px) {
+            .cards-container, .controls-container {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+
+        .controls-container {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+
+        .control {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 280px;
+            max-width: 320px;
+        }
+
+        .control label {
+            font-weight: bold;
+        }
+
+        .control input[type="range"] {
+            width: 100%;
+        }
+        .control input[type="number"] {
+            width: 80px;
+            padding: 4px;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Power Usage Dashboard</h1>
+        </div>
+
+        {% if home_data %}
+        <div class="cards-container">
+            <div class="card">
+                <h2>Current Status</h2>
+                <p><strong>Meter Balance:</strong> ₹{{ home_data.get('MeterBal', 'N/A') }}</p>
+            </div>
+            <div class="card">
+                <h2>Today's Usage</h2>
+                <p><strong>EB:</strong> ₹{{ home_data.get('CurrentDay_EB', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('daily_avg_eb', 0)) }} W)</p>
+                <p><strong>DG:</strong> ₹{{ home_data.get('CurrentDay_DG', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('daily_avg_dg', 0)) }} W)</p>
+            </div>
+            <div class="card">
+                <h2>This Month's Usage</h2>
+                <p><strong>EB:</strong> ₹{{ home_data.get('CurrentMonth_EB', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('monthly_avg_eb', 0)) }} W)</p>
+                <p><strong>DG:</strong> ₹{{ home_data.get('CurrentMonth_DG', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('monthly_avg_dg', 0)) }} W)</p>
+            </div>
+        </div>
+        {% endif %}
+
+    <div id="amount-used-graph" style="width: 100%; height: 600px; margin: 40px 0;"></div>
+
+    <div class="controls-container">
+        <div class="control">
+            <label for="intervalSlider">Interval (hours): <span id="intervalValue">24</span></label>
+            <input type="range" id="intervalSlider" min="1" max="720" value="24">
+            <input type="number" id="intervalInput" min="1" max="720" value="24">
+        </div>
+        <div class="control">
+            <label for="groupSlider">Group (minutes): <span id="groupValue">30</span></label>
+            <input type="range" id="groupSlider" min="1" max="1440" value="30">
+            <input type="number" id="groupInput" min="1" max="1440" value="30">
+        </div>
+    </div>
+
+    <script>
+        // Create slider and input elements
+        const intervalSlider = document.getElementById('intervalSlider');
+        const groupSlider = document.getElementById('groupSlider');
+        const intervalValueSpan = document.getElementById('intervalValue');
+        const groupValueSpan = document.getElementById('groupValue');
+        const intervalInput = document.getElementById('intervalInput');
+        const groupInput = document.getElementById('groupInput');
+
+        // Debounce function to limit how often a function can be called
+        function debounce(func, delay) {
+            let timeoutId;
+            return function() {
+                const context = this;
+                const args = arguments;
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => func.apply(context, args), delay);
+            };
+        }
+
+        // Update all related elements
+        function updateAll() {
+            // Update displayed values
+            intervalValueSpan.textContent = intervalSlider.value;
+            groupValueSpan.textContent = groupSlider.value;
+            intervalInput.value = intervalSlider.value;
+            groupInput.value = groupSlider.value;
+
+
+            // Update graph (debounced)
+            updateGraphDebounced();
+        }
+
+        // Debounced version of updateGraph
+        const updateGraphDebounced = debounce(updateGraph, 300);
+
+        // Update fetch URL with slider values
+        // Update fetch URL with slider values
+        function updateGraph() {
+            const intervalValue = intervalSlider.value;
+            const groupValue = groupSlider.value;
+
+            fetch(`/dash_data?interval=${intervalValue}&group=${groupValue}`)
+                .then(response => response.json())
+                .then(data => {
+                    const timestamps = [];
+                    const amountsUsed = [];
+                    const hoverTexts = []; // Array to store custom hover text
+
+                    data.forEach(record => {
+                        const timestamp = new Date(record.timestamp);
+                        const amount = parseFloat(record.amount_used).toFixed(2); // Round to 2 decimal places
+                        const derivedValue = (parseFloat(amount) * 60 / (8.33 * groupValue) * 1000 ).toFixed(2); // Example derived value
+                        
+                        timestamps.push(timestamp);
+                        amountsUsed.push(parseFloat(amount)); // Keep original value for plotting
+                        hoverTexts.push(`${timestamp.toLocaleString()}, Amount: ₹${amount}, WH: ${derivedValue}`);
+                    });
+
+                    const amountUsedData = [{
+                        x: timestamps,
+                        y: amountsUsed,
+                        type: 'scatter',
+                        mode: 'lines+markers',
+                        text: hoverTexts, // Custom hover text
+                        hoverinfo: 'text', // Only show custom text on hover
+                        hoverlabel: {
+                            bgcolor: '#fff', // Background color for hover labels
+                            font: {
+                                family: 'Arial',
+                                size: 12
+                            }
+                        }
+                    }];
+                    const layout = {
+                        title: 'Amount Used vs Time',
+                        yaxis: { 
+                            title: 'Amount Used (₹)', 
+                            tickformat: '.2f' // Format y-axis ticks to 2 decimal places
+                        }
+                    };
+
+                    Plotly.newPlot('amount-used-graph', amountUsedData, layout);
+                });
+        }
+
+
+
+        // Add event listeners
+        intervalSlider.addEventListener('input', updateAll);
+        groupSlider.addEventListener('input', updateAll);
+
+        intervalInput.addEventListener('blur', () => {
+            intervalSlider.value = intervalInput.value;
+            updateAll();
+        });
+        groupInput.addEventListener('blur', () => {
+            groupSlider.value = groupInput.value;
+            updateAll();
+        });
+
+        intervalInput.addEventListener('change', () => {
+            intervalSlider.value = intervalInput.value;
+            updateAll();
+        });
+        groupInput.addEventListener('change', () => {
+            groupSlider.value = groupInput.value;
+            updateAll();
+        });
+
+
+        // Initial synchronization
+        updateAll();
+
+
+    </script>
+</body>
+</html>

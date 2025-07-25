@@ -1,0 +1,7 @@
+.aider*
+.DS_Store
+*.cpython
+*.pyc
+*.db
+# Environment variables
+.env

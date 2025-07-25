@@ -15,6 +15,10 @@ The application provides a dashboard to view your power consumption over time an
     - Power source changes (e.g., switching to DG).
 - **Docker Support:** The application can be easily deployed using Docker and Docker Compose.
 
+### Screenshot
+
+![Dashboard Screenshot](screenshot.png)
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:

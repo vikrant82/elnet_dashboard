@@ -5,3 +5,5 @@ werkzeug==2.3.7
 APScheduler==3.10.1
 pytz==2023.3
 python-dotenv==0.21.0
+idna==3.10
+six==1.17.0

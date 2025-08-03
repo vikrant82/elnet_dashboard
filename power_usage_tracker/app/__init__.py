@@ -43,7 +43,7 @@ def create_app():
                 f"Today's EB Usage: Rs *{data.get('CurrentDay_EB', 0)}\n"
                 f"Today's DG Usage: Rs *{data.get('CurrentDay_DG', 0)}\n"
                 f"Month's EB Usage: Rs *{data.get('CurrentMonth_EB', 0)}\n"
-                f"Month's DG Usage: Rs *{data.get('CurrentMonth_DG', 0)}n"
+                f"Month's DG Usage: Rs *{data.get('CurrentMonth_DG', 0)}\n"
                 f"Meter Balance: Rs *₹{data.get('MeterBal', 0)}*"
             )
             

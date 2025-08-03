@@ -77,11 +77,15 @@ def store_data(data, state, config):
                 state.last_low_balance_alert_date = today
         
         # DG Alert
-        if state.last_dg_value is not None and dg_value != state.last_dg_value:
-            now = datetime.now()
-            if state.last_dg_alert_timestamp is None or (now - state.last_dg_alert_timestamp) > timedelta(minutes=30):
+        if state.last_dg_value is not None:
+            if dg_value != state.last_dg_value and not state.is_dg_on:
+                # DG is on
                 send_telegram_message("Power is now on DG.", config)
-                state.last_dg_alert_timestamp = now
+                state.is_dg_on = True
+            elif dg_value == state.last_dg_value and state.is_dg_on:
+                # DG is off
+                send_telegram_message("Power is now off DG.", config)
+                state.is_dg_on = False
         state.last_dg_value = dg_value
 
         last_record = get_last_record(config.DATABASE)

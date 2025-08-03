@@ -12,7 +12,7 @@ The application provides a dashboard to view your power consumption over time an
 - **Telegram Notifications:** Get real-time notifications for:
     - Daily power usage summaries.
     - Low meter balance alerts.
-    - Power source changes (e.g., switching to DG).
+    - Power source changes (e.g., switching on and off of DG).
 - **Docker Support:** The application can be easily deployed using Docker and Docker Compose.
 
 ### Screenshot
@@ -108,7 +108,7 @@ You will also receive Telegram notifications for:
 
 - **Daily Summary:** A summary of your daily power usage, sent at 11:59 PM every day.
 - **Low-Balance Alert:** An alert when your meter balance falls below the configured threshold.
-- **DG Alert:** An alert when the power source switches to the DG.
+- **DG Alert:** An alert when the power source switches to the DG, and another alert when it switches back.
 
 ## API
 

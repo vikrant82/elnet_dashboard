@@ -76,17 +76,22 @@ def store_data(data, state, config):
                 send_telegram_message(f"Low balance alert: Your meter balance is ₹{balance:.2f}.", config)
                 state.last_low_balance_alert_date = today
         
-        # DG Alert
-        if state.last_dg_value is not None:
-            if dg_value != state.last_dg_value and not state.is_dg_on:
-                # DG is on
-                send_telegram_message("Power is now on DG.", config)
-                state.is_dg_on = True
-            elif dg_value == state.last_dg_value and state.is_dg_on:
-                # DG is off
-                send_telegram_message("Power is now off DG.", config)
-                state.is_dg_on = False
+        # DG Alert - Enhanced logic with timestamp validation to handle stale data
+        if state.last_dg_value is not None and state.last_updated_timestamp is not None:
+            # Only process DG changes if the data is fresh (timestamp has changed)
+            if timestamp != state.last_updated_timestamp:
+                # Data is fresh, check for DG state changes
+                if dg_value != state.last_dg_value and not state.is_dg_on:
+                    # DG is on
+                    send_telegram_message("Power is now on DG.", config)
+                    state.is_dg_on = True
+                elif dg_value == state.last_dg_value and state.is_dg_on:
+                    # DG is off (only if DG value is actually 0 or unchanged from a non-zero value)
+                    send_telegram_message("Power is now off DG.", config)
+                    state.is_dg_on = False
+            # If timestamp is the same, data is stale - ignore DG state evaluation
         state.last_dg_value = dg_value
+        state.last_updated_timestamp = timestamp
 
         last_record = get_last_record(config.DATABASE)
         

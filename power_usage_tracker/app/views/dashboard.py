@@ -6,6 +6,32 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def get_recent_recharges(database_path, limit=5):
+    """Fetch recent recharge records from database"""
+    conn = None
+    try:
+        conn = sqlite3.connect(database_path)
+        c = conn.cursor()
+        
+        # Query for recent recharges (where recharge_amount > 0)
+        c.execute('''
+            SELECT timestamp, recharge_amount
+            FROM power_usage
+            WHERE recharge_amount > 0
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (limit,))
+        
+        records = c.fetchall()
+        return [{'timestamp': record[0], 'amount': float(record[1])} for record in records]
+            
+    except sqlite3.Error as e:
+        logger.error(f"Database error fetching recharges: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
 def create_dashboard_bp(api_client, config):
     dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -32,7 +58,7 @@ def create_dashboard_bp(api_client, config):
                     strftime('%Y-%m-%d %H:%M', timestamp, '-' ||
                         (strftime('%M', timestamp) % ?) || ' minutes') AS bucket,
                     SUM(amount_used) AS total_amount_used
-                FROM power_usage 
+                FROM power_usage
                 WHERE timestamp >= ?
                 GROUP BY bucket
                 ORDER BY bucket
@@ -70,6 +96,8 @@ def create_dashboard_bp(api_client, config):
     @dashboard_bp.route('/')
     def index():
         home_data = api_client.fetch_home_data()
+        recent_recharges = get_recent_recharges(config.DATABASE)
+        
         if home_data and home_data.get('Data'):
             data = home_data['Data']
             now = datetime.now()
@@ -94,6 +122,8 @@ def create_dashboard_bp(api_client, config):
                 data['monthly_avg_eb'] = 0
                 data['monthly_avg_dg'] = 0
 
-        return render_template('dashboard.html', home_data=home_data.get('Data') if home_data else None)
+        return render_template('dashboard.html',
+                             home_data=home_data.get('Data') if home_data else None,
+                             recent_recharges=recent_recharges)
 
     return dashboard_bp

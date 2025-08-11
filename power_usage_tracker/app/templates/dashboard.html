@@ -123,6 +123,14 @@
                 <p><strong>EB:</strong> ₹{{ home_data.get('CurrentMonth_EB', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('monthly_avg_eb', 0)) }} W)</p>
                 <p><strong>DG:</strong> ₹{{ home_data.get('CurrentMonth_DG', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('monthly_avg_dg', 0)) }} W)</p>
             </div>
+            {% if recent_recharges %}
+            <div class="card">
+                <h2>Recent Recharges</h2>
+                {% for recharge in recent_recharges %}
+                <p><strong>₹{{ "%.2f"|format(recharge.amount) }}</strong> on {{ recharge.timestamp }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
         {% endif %}
 

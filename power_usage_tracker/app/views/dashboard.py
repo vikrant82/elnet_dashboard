@@ -32,7 +32,7 @@ def get_recent_recharges(database_path, limit=5):
         if conn:
             conn.close()
 
-def create_dashboard_bp(api_client, config):
+def create_dashboard_bp(api_client, config, state=None):
     dashboard_bp = Blueprint('dashboard', __name__)
 
     @dashboard_bp.route('/dash_data')
@@ -98,6 +98,33 @@ def create_dashboard_bp(api_client, config):
         home_data = api_client.fetch_home_data()
         recent_recharges = get_recent_recharges(config.DATABASE)
         
+        # Prepare DG status data
+        dg_status = {
+            'is_dg_on': False,
+            'duration': ''
+        }
+        
+        if state:
+            dg_status['is_dg_on'] = state.is_dg_on
+            if state.is_dg_on and state.dg_state_changed_at:
+                # Calculate duration
+                duration = datetime.now() - state.dg_state_changed_at
+                hours = duration.seconds // 3600
+                minutes = (duration.seconds % 3600) // 60
+                if hours > 0:
+                    dg_status['duration'] = f"{hours}h {minutes}m"
+                else:
+                    dg_status['duration'] = f"{minutes}m"
+            elif not state.is_dg_on and state.dg_state_changed_at:
+                # Show how long we've been on EB
+                duration = datetime.now() - state.dg_state_changed_at
+                hours = duration.seconds // 3600
+                minutes = (duration.seconds % 3600) // 60
+                if hours > 0:
+                    dg_status['duration'] = f"{hours}h {minutes}m"
+                else:
+                    dg_status['duration'] = f"{minutes}m"
+        
         if home_data and home_data.get('Data'):
             data = home_data['Data']
             now = datetime.now()
@@ -124,6 +151,7 @@ def create_dashboard_bp(api_client, config):
 
         return render_template('dashboard.html',
                              home_data=home_data.get('Data') if home_data else None,
-                             recent_recharges=recent_recharges)
+                             recent_recharges=recent_recharges,
+                             dg_status=dg_status)
 
     return dashboard_bp

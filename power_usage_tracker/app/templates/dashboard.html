@@ -29,6 +29,29 @@
             margin-bottom: 40px;
         }
 
+        .dg-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .dg-indicator-duration {
+            font-size: 0.8rem;
+            font-weight: normal;
+        }
+
+        .dg-on {
+            background-color: #ff6b6b;
+            color: white;
+        }
+
+        .eb-on {
+            background-color: #51cf66;
+            color: white;
+        }
+
         .cards-container {
             display: flex;
             flex-wrap: wrap;
@@ -112,6 +135,16 @@
             <div class="card">
                 <h2>Current Status</h2>
                 <p><strong>Meter Balance:</strong> ₹{{ home_data.get('MeterBal', 'N/A') }}</p>
+                {% if dg_status %}
+                <p><strong>Power Source:</strong>
+                    <span class="dg-indicator {{ 'dg-on' if dg_status.is_dg_on else 'eb-on' }}">
+                        {{ '⚡ DG' if dg_status.is_dg_on else '🔌 EB' }}
+                    </span>
+                    {% if dg_status.duration %}
+                        <span class="dg-indicator-duration">for {{ dg_status.duration }}</span>
+                    {% endif %}
+                </p>
+                {% endif %}
             </div>
             <div class="card">
                 <h2>Today's Usage</h2>

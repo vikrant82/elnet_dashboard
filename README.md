@@ -8,16 +8,21 @@ The application provides a dashboard to view your power consumption over time an
 
 ## Features
 
-- **Dashboard:** A web-based dashboard to visualize your power usage data with interactive graphs.
+- **Dashboard:** A web-based dashboard to visualize your power usage data with interactive graphs, recent recharge history, and a real-time power source indicator.
 - **Telegram Notifications:** Get real-time notifications for:
     - Daily power usage summaries.
     - Low meter balance alerts.
     - Power source changes (e.g., switching on and off of DG).
+    - Meter recharge notifications.
+- **Enhanced DG Detection:** Smart detection of DG power changes that handles stale data from the server.
+- **Meter Recharge Tracking:** Automatic detection and tracking of meter recharges with detailed history.
 - **Docker Support:** The application can be easily deployed using Docker and Docker Compose.
 
 ### Screenshot
 
 ![Dashboard Screenshot](screenshot.png)
+
+*Note: The screenshot may be slightly outdated. The power source indicator is now located in the "Current Status" card.*
 
 ## Prerequisites
 
@@ -109,6 +114,13 @@ You will also receive Telegram notifications for:
 - **Daily Summary:** A summary of your daily power usage, sent at 11:59 PM every day.
 - **Low-Balance Alert:** An alert when your meter balance falls below the configured threshold.
 - **DG Alert:** An alert when the power source switches to the DG, and another alert when it switches back.
+- **Meter Recharge Alert:** An alert when your meter is recharged with the amount added and new balance.
+
+The dashboard now also displays:
+- **Power Source Indicator:** A real-time indicator in the "Current Status" card shows whether you are on EB or DG power and for how long.
+- **Recent Recharges:** Shows the last 5 meter recharges with dates and amounts.
+- **Enhanced DG Detection:** More accurate detection of DG power changes that ignores stale server data.
+- **Meter Recharge Tracking:** Automatic tracking of all meter recharges in the database.
 
 ## API
 

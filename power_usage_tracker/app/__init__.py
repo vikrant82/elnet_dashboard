@@ -19,7 +19,7 @@ def create_app():
     
     init_db(config.DATABASE)
     
-    dashboard_bp = create_dashboard_bp(api_client, config)
+    dashboard_bp = create_dashboard_bp(api_client, config, state)
     app.register_blueprint(dashboard_bp, url_prefix='/')
     
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -48,7 +48,7 @@ def create_app():
             )
             
             send_telegram_message(message, config)
-
+    
     scheduler.start()
     
     return app

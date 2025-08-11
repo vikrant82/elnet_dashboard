@@ -89,10 +89,12 @@ def store_data(data, state, config):
                     # DG is on
                     send_telegram_message("Power is now on DG.", config)
                     state.is_dg_on = True
+                    state.dg_state_changed_at = datetime.now()
                 elif dg_value == state.last_dg_value and state.is_dg_on:
                     # DG is off (only if DG value is actually 0 or unchanged from a non-zero value)
                     send_telegram_message("Power is now off DG.", config)
                     state.is_dg_on = False
+                    state.dg_state_changed_at = datetime.now()
             # If timestamp is the same, data is stale - ignore DG state evaluation
         state.last_dg_value = dg_value
         state.last_updated_timestamp = timestamp

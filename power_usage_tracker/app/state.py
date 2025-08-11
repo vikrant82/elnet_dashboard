@@ -6,3 +6,4 @@ class State:
         self.last_dg_value = None
         self.last_updated_timestamp = None
         self.is_dg_on = False
+        self.dg_state_changed_at = None

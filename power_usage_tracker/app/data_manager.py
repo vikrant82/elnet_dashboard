@@ -68,6 +68,7 @@ def store_data(data, state, config):
             balance = float(data['Data']['Balance'])
             present_load = float(data['Data']['PresentLoad'])
             dg_value = float(data['Data']['DG'])
+            eb_value = float(data['Data']['EB'])
             timestamp = datetime.strptime(data['Data']['UpdatedOn'], '%d-%m-%Y %H:%M:%S')
         except (KeyError, ValueError, TypeError) as e:
             logger.error(f"Data validation error: {e}")
@@ -80,23 +81,38 @@ def store_data(data, state, config):
                 send_telegram_message(f"Low balance alert: Your meter balance is ₹{balance:.2f}.", config)
                 state.last_low_balance_alert_date = today
         
-        # DG Alert - Enhanced logic with timestamp validation to handle stale data
-        if state.last_dg_value is not None and state.last_updated_timestamp is not None:
-            # Only process DG changes if the data is fresh (timestamp has changed)
-            if timestamp != state.last_updated_timestamp:
-                # Data is fresh, check for DG state changes
-                if dg_value != state.last_dg_value and not state.is_dg_on:
-                    # DG is on
+        # DG Alert - New robust logic
+        if state.last_updated_timestamp and timestamp != state.last_updated_timestamp:
+            is_balance_changed = state.last_balance_value != balance
+            is_dg_changed = state.last_dg_value != dg_value
+            is_eb_changed = state.last_eb_value != eb_value
+
+            if state.is_dg_on:
+                logger.info(f"DG LOG: Currently on DG. API Response: {data['Data']}")
+                # If DG value changes or balance changes, we are still on DG
+                if is_dg_changed or is_balance_changed:
+                    state.dg_unchanged_counter = 0 # Reset counter
+                else: # DG and balance are unchanged
+                    state.dg_unchanged_counter += 1
+                
+                # If EB value has changed and we've been stable for a while, switch to EB
+                if is_eb_changed and state.dg_unchanged_counter >= 3:
+                    send_telegram_message("Power is now off DG (Switched to EB).", config)
+                    state.is_dg_on = False
+                    state.dg_state_changed_at = datetime.now()
+                    state.dg_unchanged_counter = 0
+            else: # Currently on EB
+                # If DG value changes and balance changes, switch to DG
+                if is_dg_changed and is_balance_changed:
                     send_telegram_message("Power is now on DG.", config)
                     state.is_dg_on = True
                     state.dg_state_changed_at = datetime.now()
-                elif dg_value == state.last_dg_value and state.is_dg_on:
-                    # DG is off (only if DG value is actually 0 or unchanged from a non-zero value)
-                    send_telegram_message("Power is now off DG.", config)
-                    state.is_dg_on = False
-                    state.dg_state_changed_at = datetime.now()
-            # If timestamp is the same, data is stale - ignore DG state evaluation
+                    state.dg_unchanged_counter = 0
+        
+        # Update state for next iteration
         state.last_dg_value = dg_value
+        state.last_eb_value = eb_value
+        state.last_balance_value = balance
         state.last_updated_timestamp = timestamp
 
         last_record = get_last_record(config.DATABASE)

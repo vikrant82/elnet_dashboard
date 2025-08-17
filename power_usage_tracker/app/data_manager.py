@@ -86,6 +86,10 @@ def store_data(data, state, config):
             is_balance_changed = state.last_balance_value != balance
             is_dg_changed = state.last_dg_value != dg_value
             is_eb_changed = state.last_eb_value != eb_value
+            
+            logger.info(f"DG Check: is_dg_on={state.is_dg_on}, dg_value={dg_value}, last_dg_value={state.last_dg_value}, is_dg_changed={is_dg_changed}")
+            logger.info(f"EB Check: eb_value={eb_value}, last_eb_value={state.last_eb_value}, is_eb_changed={is_eb_changed}")
+            logger.info(f"Balance Check: balance={balance}, last_balance_value={state.last_balance_value}, is_balance_changed={is_balance_changed}")
 
             if state.is_dg_on:
                 logger.info(f"DG LOG: Currently on DG. API Response: {data['Data']}")
@@ -102,8 +106,8 @@ def store_data(data, state, config):
                     state.dg_state_changed_at = datetime.now()
                     state.dg_unchanged_counter = 0
             else: # Currently on EB
-                # If DG value changes and balance changes, switch to DG
-                if is_dg_changed and is_balance_changed:
+                # If DG value changes, switch to DG
+                if is_dg_changed:
                     send_telegram_message("Power is now on DG.", config)
                     state.is_dg_on = True
                     state.dg_state_changed_at = datetime.now()

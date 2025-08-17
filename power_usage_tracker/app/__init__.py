@@ -1,6 +1,7 @@
 from flask import Flask
 from dotenv import load_dotenv
 import os
+from .logging_config import setup_logging
 from .telegram_notifier import send_telegram_message
 from .config import load_config
 from .state import State
@@ -11,6 +12,7 @@ from .views.dashboard import create_dashboard_bp
 load_dotenv()
 
 def create_app():
+    setup_logging()
     app = Flask(__name__)
     
     config = load_config()

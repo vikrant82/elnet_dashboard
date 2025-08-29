@@ -2,6 +2,7 @@ import sqlite3
 from datetime import datetime, timedelta
 import pytz
 import logging
+import statistics
 from .telegram_notifier import send_telegram_message
 
 logger = logging.getLogger(__name__)
@@ -73,8 +74,8 @@ def store_data(data, state, config):
         except (KeyError, ValueError, TypeError) as e:
             logger.error(f"Data validation error: {e}")
             return
-            
-        # === START: New Data Validation Checks ===
+
+        # === START: Data Validation and Anomaly Checks ===
 
         # 1. Check for stale data from the API
         kolkata_tz = pytz.timezone('Asia/Kolkata')
@@ -88,10 +89,9 @@ def store_data(data, state, config):
         # 2. Check for anomalous zero-value data
         if balance == 0 and eb_value == 0 and dg_value == 0:
             logger.warning(f"Received anomalous zero-value data for timestamp {timestamp}. Skipping storage.")
-            # Do not update state with this bad data, just return.
             return
 
-        # === END: New Data Validation Checks ===
+        # === END: Data Validation and Anomaly Checks ===
 
         # Low Balance Alert
         if config.LOW_BALANCE_THRESHOLD and balance < float(config.LOW_BALANCE_THRESHOLD):
@@ -100,7 +100,7 @@ def store_data(data, state, config):
                 send_telegram_message(f"Low balance alert: Your meter balance is ₹{balance:.2f}.", config)
                 state.last_low_balance_alert_date = today
         
-        # DG Alert - New robust logic
+        # DG Alert and Data Inconsistency Logic
         if state.last_updated_timestamp and timestamp != state.last_updated_timestamp:
             is_balance_changed = state.last_balance_value != balance
             is_dg_changed = state.last_dg_value != dg_value
@@ -110,20 +110,34 @@ def store_data(data, state, config):
             logger.info(f"EB Check: eb_value={eb_value}, last_eb_value={state.last_eb_value}, is_eb_changed={is_eb_changed}")
             logger.info(f"Balance Check: balance={balance}, last_balance_value={state.last_balance_value}, is_balance_changed={is_balance_changed}")
 
+            # 3. Detect Inconsistent API Data (Balance changes but consumption doesn't)
+            if is_balance_changed and not is_eb_changed and not is_dg_changed:
+                logger.warning(f"Data inconsistency detected: Balance changed from {state.last_balance_value} to {balance}, but EB and DG readings are static.")
+
+            # 4. Detect PresentLoad Spikes
+            if len(state.recent_loads) > 5:  # Ensure we have enough data for a stable average
+                average_load = statistics.mean(state.recent_loads)
+                # A spike is an unusually high value compared to the recent average
+                if present_load > (average_load * 3) and present_load > 2.0:
+                    logger.warning(f"Anomalous spike in PresentLoad detected: {present_load:.2f} (recent average was {average_load:.2f})")
+            
+            # Maintain a rolling list of the last 10 load readings
+            state.recent_loads.append(present_load)
+            if len(state.recent_loads) > 10:
+                state.recent_loads.pop(0)
+
             # Condition to detect switch TO DG:
-            # We are currently on EB, and the DG reading changes, balance changes, but the EB reading does not.
             if not state.is_dg_on and is_dg_changed and is_balance_changed and not is_eb_changed:
                 send_telegram_message(f"Power is now on DG. Current Balance: ₹{balance:.2f}", config)
                 state.is_dg_on = True
                 state.dg_state_changed_at = datetime.now()
 
             # Condition to detect switch FROM DG:
-            # We are currently on DG, and the EB reading changes, balance changes, but the DG reading does not.
             elif state.is_dg_on and is_eb_changed and is_balance_changed and not is_dg_changed:
                 send_telegram_message(f"Power is now off DG (Switched to EB). Current Balance: ₹{balance:.2f}", config)
                 state.is_dg_on = False
                 state.dg_state_changed_at = datetime.now()
-
+        
         # Update state for next iteration
         state.last_dg_value = dg_value
         state.last_eb_value = eb_value
@@ -139,19 +153,12 @@ def store_data(data, state, config):
             previous_balance = last_record['balance']
             balance_change = previous_balance - balance
             
-            # Check for unusually large balance change, which might indicate a meter reset or bad data.
-            # We'll consider any single usage event over Rs. 50 as suspicious.
-            if 0 < balance_change < 50:
-                # Normal usage - balance decreased
+            if 0 < balance_change < 50: # Assuming usage in a 30-sec interval won't exceed Rs. 50
                 amount_used = balance_change
             elif balance_change < 0:
-                # Meter recharge - balance increased
                 recharge_amount = abs(balance_change)
-                # Send recharge alert
                 send_telegram_message(f"Meter recharged: ₹{recharge_amount:.2f} added. Current balance: ₹{balance:.2f}", config)
-            # If balance_change is 0 or > 50, we assume it's either no usage or a data anomaly.
         
-        # Only insert if there's a change in balance to avoid redundant entries
         if not last_record or last_record['balance'] != balance:
             timestamp_utc = pytz.timezone('Asia/Kolkata').localize(timestamp).astimezone(pytz.utc)
             c.execute('''

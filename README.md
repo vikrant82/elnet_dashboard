@@ -113,7 +113,7 @@ You will also receive Telegram notifications for:
 
 - **Daily Summary:** A summary of your daily power usage, sent at 11:59 PM every day.
 - **Low-Balance Alert:** An alert when your meter balance falls below the configured threshold.
-- **DG Alert:** An alert when the power source switches to the DG, and another alert when it switches back.
+- **DG Alert:** An alert when the power source switches to the DG. When switching back to EB, a summary of the DG session is provided, including duration, amount used, and average power consumption.
 - **Meter Recharge Alert:** An alert when your meter is recharged with the amount added and new balance.
 
 The dashboard now also displays:

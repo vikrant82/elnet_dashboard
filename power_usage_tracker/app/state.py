@@ -11,3 +11,4 @@ class State:
         self.dg_state_changed_at = None
         self.dg_unchanged_counter = 0
         self.recent_loads = []
+        self.dg_session_start_value = None

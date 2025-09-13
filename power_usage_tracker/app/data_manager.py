@@ -131,12 +131,35 @@ def store_data(data, state, config):
                 send_telegram_message(f"Power is now on DG. Current Balance: ₹{balance:.2f}", config)
                 state.is_dg_on = True
                 state.dg_state_changed_at = datetime.now()
+                state.dg_session_start_value = state.last_dg_value
 
             # Condition to detect switch FROM DG:
             elif state.is_dg_on and is_eb_changed and is_balance_changed and not is_dg_changed:
-                send_telegram_message(f"Power is now off DG (Switched to EB). Current Balance: ₹{balance:.2f}", config)
+                duration = datetime.now() - state.dg_state_changed_at
+                duration_hours = duration.total_seconds() / 3600
+                
+                dg_amount_used = 0
+                if state.dg_session_start_value is not None:
+                    dg_amount_used = state.last_dg_value - state.dg_session_start_value
+
+                avg_power = 0
+                if duration_hours > 0:
+                    # Consistent with the formula used in dashboard view
+                    avg_power = (dg_amount_used / duration_hours / 8.33) * 1000
+
+                summary_message = (
+                    f"Power is now off DG (Switched to EB).\n\n"
+                    f"DG Session Summary:\n"
+                    f"- Duration: {str(duration).split('.')[0]}\n"
+                    f"- Amount Used: ₹{dg_amount_used:.2f}\n"
+                    f"- Avg. Power: {avg_power:.2f} W\n\n"
+                    f"Current Balance: ₹{balance:.2f}"
+                )
+                send_telegram_message(summary_message, config)
+                
                 state.is_dg_on = False
                 state.dg_state_changed_at = datetime.now()
+                state.dg_session_start_value = None
         
         # Update state for next iteration
         state.last_dg_value = dg_value

@@ -2,199 +2,565 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Power Usage Dashboard</title>
-    <!-- Plotly.js -->
     <script src="https://cdn.plot.ly/plotly-2.16.0.min.js"></script>
-    <!-- Add mobile-specific CSS in head -->
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f0f2f5;
-            color: #333;
-            margin: 0;
-            padding: 20px;
+        :root {
+            --bg: #0b1020;
+            --bg-elevated: #121a2f;
+            --card-bg: #151f38;
+            --text-primary: #ecf2ff;
+            --text-secondary: #9eb0d8;
+            --border: #2a3a63;
+            --grid-color: rgba(158, 176, 216, 0.2);
+            --accent: #38bdf8;
+            --accent-soft: rgba(56, 189, 248, 0.15);
+            --ok: #22c55e;
+            --warn: #f59e0b;
+            --danger: #ef4444;
+            --shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
         }
 
-        h1, h2, h3 {
-            color: #1c1e21;
+        body[data-theme="light"] {
+            --bg: #f3f5fb;
+            --bg-elevated: #ffffff;
+            --card-bg: #ffffff;
+            --text-primary: #101828;
+            --text-secondary: #475467;
+            --border: #d0d8ea;
+            --grid-color: rgba(16, 24, 40, 0.12);
+            --accent: #2563eb;
+            --accent-soft: rgba(37, 99, 235, 0.12);
+            --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at top left, var(--bg-elevated) 0%, var(--bg) 55%);
+            color: var(--text-primary);
+            padding: 20px;
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1280px;
             margin: 0 auto;
         }
 
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-
-        .dg-indicator {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-weight: bold;
-            font-size: 0.9rem;
-        }
-
-        .dg-indicator-duration {
-            font-size: 0.8rem;
-            font-weight: normal;
-        }
-
-        .dg-on {
-            background-color: #ff6b6b;
-            color: white;
-        }
-
-        .eb-on {
-            background-color: #51cf66;
-            color: white;
-        }
-
-        .cards-container {
+        .top-bar {
             display: flex;
             flex-wrap: wrap;
-            gap: 20px;
-            justify-content: center;
-            margin-bottom: 40px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .title-wrap h1 {
+            margin: 0;
+            font-size: 1.8rem;
+        }
+
+        .title-wrap p {
+            margin: 6px 0 0;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .theme-toggle {
+            background: var(--accent-soft);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(300px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
         }
 
         .card {
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-            flex: 1;
-            min-width: 280px;
-            max-width: 320px;
+            background: linear-gradient(180deg, var(--card-bg), color-mix(in srgb, var(--card-bg) 92%, black 8%));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            padding: 16px;
         }
 
         .card h2 {
-            margin-top: 0;
-            font-size: 1.5rem;
-        }
-
-        .card p {
+            margin: 0 0 12px;
             font-size: 1.1rem;
-            margin: 10px 0;
+            color: var(--text-primary);
         }
 
-        .card strong {
-            color: #056be1;
-        }
-
-        @media (max-width: 768px) {
-            .cards-container, .controls-container {
-                flex-direction: column;
-                align-items: center;
-            }
-        }
-
-        .controls-container {
+        .stat-row {
             display: flex;
-            gap: 40px;
-            justify-content: center;
-            margin-bottom: 40px;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 8px 0;
+        }
+
+        .label {
+            color: var(--text-secondary);
+        }
+
+        .value {
+            font-weight: 700;
+        }
+
+        .source-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .source-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 999px;
+            padding: 4px 12px;
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+
+        .dg-on {
+            background: rgba(239, 68, 68, 0.18);
+            border: 1px solid rgba(239, 68, 68, 0.45);
+            color: #fecaca;
+        }
+
+        .eb-on {
+            background: rgba(34, 197, 94, 0.18);
+            border: 1px solid rgba(34, 197, 94, 0.45);
+            color: #bbf7d0;
+        }
+
+        body[data-theme="light"] .dg-on {
+            color: #b91c1c;
+        }
+
+        body[data-theme="light"] .eb-on {
+            color: #166534;
+        }
+
+        .duration-text {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .card-live {
+            grid-column: 1 / -1;
+        }
+
+        .card-compact {
+            padding: 12px;
+        }
+
+        .card-compact h2 {
+            font-size: 1rem;
+            margin-bottom: 8px;
+        }
+
+        .card-compact .stat-row {
+            margin: 6px 0;
+        }
+
+        .card-compact .value {
+            font-size: 0.95rem;
+        }
+
+        .card-compact .recharge-list {
+            font-size: 0.9rem;
+        }
+
+        .card-compact .recharge-list li {
+            margin: 6px 0;
+        }
+
+        #live-usage-dial {
+            width: 100%;
+            height: 260px;
+        }
+
+        .live-readout {
+            font-size: 1.6rem;
+            font-weight: 800;
+            margin: 4px 0;
+        }
+
+        #live-load-sparkline {
+            width: 100%;
+            height: 120px;
+            margin-top: 8px;
+        }
+
+        .status-pill {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid var(--border);
+        }
+
+        .status-ok {
+            background: rgba(34, 197, 94, 0.16);
+            color: #bbf7d0;
+        }
+
+        .status-warn {
+            background: rgba(245, 158, 11, 0.16);
+            color: #fde68a;
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.16);
+            color: #fecaca;
+        }
+
+        body[data-theme="light"] .status-ok {
+            color: #166534;
+        }
+
+        body[data-theme="light"] .status-warn {
+            color: #92400e;
+        }
+
+        body[data-theme="light"] .status-error {
+            color: #991b1b;
+        }
+
+        .muted {
+            color: var(--text-secondary);
+            margin: 6px 0 0;
+            font-size: 0.9rem;
+        }
+
+        .recharge-list {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--text-secondary);
+        }
+
+        .recharge-list li {
+            margin: 8px 0;
+        }
+
+        .recharge-list strong {
+            color: var(--text-primary);
+        }
+
+        .chart-card,
+        .control-panel {
+            margin-top: 16px;
+        }
+
+        #amount-used-graph {
+            width: 100%;
+            height: 520px;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
         }
 
         .control {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            min-width: 280px;
-            max-width: 320px;
+            gap: 8px;
         }
 
         .control label {
-            font-weight: bold;
+            font-weight: 700;
+            color: var(--text-secondary);
         }
 
         .control input[type="range"] {
             width: 100%;
+            accent-color: var(--accent);
         }
+
         .control input[type="number"] {
-            width: 80px;
-            padding: 4px;
-            text-align: center;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+            width: 90px;
+            padding: 6px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: color-mix(in srgb, var(--card-bg) 90%, black 10%);
+            color: var(--text-primary);
+        }
+
+        .chart-mode-toggle {
+            display: inline-flex;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            width: fit-content;
+            background: color-mix(in srgb, var(--card-bg) 92%, black 8%);
+        }
+
+        .chart-mode-btn {
+            border: 0;
+            background: transparent;
+            color: var(--text-secondary);
+            padding: 8px 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .chart-mode-btn + .chart-mode-btn {
+            border-left: 1px solid var(--border);
+        }
+
+        .chart-mode-btn.active {
+            background: var(--accent-soft);
+            color: var(--text-primary);
+        }
+
+        .compact-kv {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 6px 10px;
+            align-items: center;
+        }
+
+        .compact-kv .label {
+            font-size: 0.9rem;
+        }
+
+        .compact-kv .value {
+            font-size: 0.92rem;
+            font-weight: 700;
+        }
+
+        @media (max-width: 900px) {
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .card-live {
+                grid-column: span 1;
+            }
+
+            #amount-used-graph {
+                height: 420px;
+            }
         }
     </style>
 </head>
-
-<body>
+<body data-theme="dark">
     <div class="container">
-        <div class="header">
-            <h1>Power Usage Dashboard</h1>
+        <div class="top-bar">
+            <div class="title-wrap">
+                <h1>Power Usage Dashboard</h1>
+                <p>Dark-first refresh with live usage dial (auto-updates every 10 seconds)</p>
+            </div>
+            <button id="themeToggle" class="theme-toggle" type="button">☀️ Light Mode</button>
         </div>
 
-        {% if home_data %}
-        <div class="cards-container">
-            <div class="card">
+        <div class="cards-grid">
+            <div class="card card-live">
+                <h2>Live Usage Dial (W)</h2>
+                <div id="live-usage-dial"></div>
+                <div class="live-readout"><span id="liveUsageW">--</span> W</div>
+                <p id="liveStaleIndicator" class="status-pill">Awaiting live data…</p>
+                <p id="liveMetaText" class="muted">Dial range: 0–3.5 kW (0–3500 W)</p>
+                <div id="live-load-sparkline"></div>
+                <p id="sparklineTrendText" class="muted">Live trend: awaiting data…</p>
+            </div>
+
+            <div class="card card-status">
                 <h2>Current Status</h2>
-                <p><strong>Meter Balance:</strong> ₹{{ home_data.get('MeterBal', 'N/A') }}</p>
-                {% if dg_status %}
-                <p><strong>Power Source:</strong>
-                    <span class="dg-indicator {{ 'dg-on' if dg_status.is_dg_on else 'eb-on' }}">
+                <div class="stat-row">
+                    <span class="label">Meter Balance</span>
+                    <span class="value" id="meterBalance">
+                        {% if home_data and home_data.get('MeterBal') is not none %}
+                            ₹{{ "%.2f"|format(home_data.get('MeterBal')|float) }}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="source-row">
+                    <span class="label">Power Source</span>
+                    <span id="powerSourceBadge" class="source-pill {{ 'dg-on' if dg_status.is_dg_on else 'eb-on' }}">
                         {{ '⚡ DG' if dg_status.is_dg_on else '🔌 EB' }}
                     </span>
-                    {% if dg_status.duration %}
-                        <span class="dg-indicator-duration">for {{ dg_status.duration }}</span>
-                    {% endif %}
-                </p>
+                    <span id="powerSourceDuration" class="duration-text">
+                        {% if dg_status.duration %}for {{ dg_status.duration }}{% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <div class="card card-today">
+                <h2>Today's Usage</h2>
+                <div class="stat-row">
+                    <span class="label">EB</span>
+                    <span class="value">
+                        ₹{{ home_data.get('CurrentDay_EB', 'N/A') if home_data else 'N/A' }}
+                    </span>
+                </div>
+                <div class="stat-row">
+                    <span class="label">Avg EB</span>
+                    <span class="value">{{ "%.2f"|format(home_data.get('daily_avg_eb', 0) if home_data else 0) }} W</span>
+                </div>
+                <div class="stat-row">
+                    <span class="label">DG</span>
+                    <span class="value">
+                        ₹{{ home_data.get('CurrentDay_DG', 'N/A') if home_data else 'N/A' }}
+                    </span>
+                </div>
+                <div class="stat-row">
+                    <span class="label">Avg DG</span>
+                    <span class="value">{{ "%.2f"|format(home_data.get('daily_avg_dg', 0) if home_data else 0) }} W</span>
+                </div>
+            </div>
+
+            <div class="card card-month card-compact">
+                <h2>📅 This Month's Usage</h2>
+                <div class="compact-kv">
+                    <span class="label">⚡ EB</span>
+                    <span class="value">₹{{ home_data.get('CurrentMonth_EB', 'N/A') if home_data else 'N/A' }}</span>
+                    <span class="label">📈 Avg EB</span>
+                    <span class="value">{{ "%.2f"|format(home_data.get('monthly_avg_eb', 0) if home_data else 0) }} W</span>
+                    <span class="label">⛽ DG</span>
+                    <span class="value">₹{{ home_data.get('CurrentMonth_DG', 'N/A') if home_data else 'N/A' }}</span>
+                    <span class="label">📉 Avg DG</span>
+                    <span class="value">{{ "%.2f"|format(home_data.get('monthly_avg_dg', 0) if home_data else 0) }} W</span>
+                </div>
+            </div>
+
+            <div class="card card-recharges card-compact">
+                <h2>💳 Recent Recharges</h2>
+                {% if recent_recharges %}
+                <ul class="recharge-list">
+                    {% for recharge in recent_recharges %}
+                    <li><strong>₹{{ "%.2f"|format(recharge.amount) }}</strong> on {{ recharge.timestamp }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="muted">No recent recharge events</p>
                 {% endif %}
             </div>
-            <div class="card">
-                <h2>Today's Usage</h2>
-                <p><strong>EB:</strong> ₹{{ home_data.get('CurrentDay_EB', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('daily_avg_eb', 0)) }} W)</p>
-                <p><strong>DG:</strong> ₹{{ home_data.get('CurrentDay_DG', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('daily_avg_dg', 0)) }} W)</p>
-            </div>
-            <div class="card">
-                <h2>This Month's Usage</h2>
-                <p><strong>EB:</strong> ₹{{ home_data.get('CurrentMonth_EB', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('monthly_avg_eb', 0)) }} W)</p>
-                <p><strong>DG:</strong> ₹{{ home_data.get('CurrentMonth_DG', 'N/A') }} (Avg: {{ "%.2f"|format(home_data.get('monthly_avg_dg', 0)) }} W)</p>
-            </div>
-            {% if recent_recharges %}
-            <div class="card">
-                <h2>Recent Recharges</h2>
-                {% for recharge in recent_recharges %}
-                <p><strong>₹{{ "%.2f"|format(recharge.amount) }}</strong> on {{ recharge.timestamp }}</p>
-                {% endfor %}
-            </div>
-            {% endif %}
         </div>
-        {% endif %}
 
-    <div id="amount-used-graph" style="width: 100%; height: 600px; margin: 40px 0;"></div>
-
-    <div class="controls-container">
-        <div class="control">
-            <label for="intervalSlider">Interval (hours): <span id="intervalValue">24</span></label>
-            <input type="range" id="intervalSlider" min="1" max="720" value="24">
-            <input type="number" id="intervalInput" min="1" max="720" value="24">
+        <div class="card chart-card">
+            <h2>Amount Used vs Time</h2>
+            <div id="amount-used-graph"></div>
         </div>
-        <div class="control">
-            <label for="groupSlider">Group (minutes): <span id="groupValue">30</span></label>
-            <input type="range" id="groupSlider" min="1" max="1440" value="30">
-            <input type="number" id="groupInput" min="1" max="1440" value="30">
+
+        <div class="card control-panel">
+            <h2>Graph Controls</h2>
+            <div class="controls-grid">
+                <div class="control">
+                    <label for="intervalSlider">Interval (hours): <span id="intervalValue">24</span></label>
+                    <input type="range" id="intervalSlider" min="1" max="720" value="24">
+                    <input type="number" id="intervalInput" min="1" max="720" value="24">
+                </div>
+                <div class="control">
+                    <label for="groupSlider">Group (minutes): <span id="groupValue">30</span></label>
+                    <input type="range" id="groupSlider" min="1" max="1440" value="30">
+                    <input type="number" id="groupInput" min="1" max="1440" value="30">
+                </div>
+                <div class="control">
+                    <label>Chart Y-axis mode</label>
+                    <div class="chart-mode-toggle" role="group" aria-label="Chart Y-axis mode toggle">
+                        <button id="chartModeRupee" class="chart-mode-btn" type="button" data-chart-mode="rupee">₹</button>
+                        <button id="chartModeWatts" class="chart-mode-btn active" type="button" data-chart-mode="watts">W</button>
+                        <button id="chartModeBoth" class="chart-mode-btn" type="button" data-chart-mode="both">Both</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        // Create slider and input elements
+        const MAX_DIAL_KW = 3.5;
+        const TARIFF_RUPEE_PER_KWH = 8.33;
+        const THEME_KEY = 'dashboard_theme';
+        const CHART_PREFS_KEY = 'dashboard_chart_prefs';
+        const LIVE_REFRESH_MS = 10000;
+
         const intervalSlider = document.getElementById('intervalSlider');
         const groupSlider = document.getElementById('groupSlider');
         const intervalValueSpan = document.getElementById('intervalValue');
         const groupValueSpan = document.getElementById('groupValue');
         const intervalInput = document.getElementById('intervalInput');
         const groupInput = document.getElementById('groupInput');
+        const themeToggle = document.getElementById('themeToggle');
+        const chartModeButtons = Array.from(document.querySelectorAll('.chart-mode-btn'));
 
-        // Debounce function to limit how often a function can be called
+        const meterBalanceEl = document.getElementById('meterBalance');
+        const sourceBadgeEl = document.getElementById('powerSourceBadge');
+        const sourceDurationEl = document.getElementById('powerSourceDuration');
+        const liveUsageWEl = document.getElementById('liveUsageW');
+        const liveStaleIndicatorEl = document.getElementById('liveStaleIndicator');
+        const liveMetaTextEl = document.getElementById('liveMetaText');
+        const sparklineTrendTextEl = document.getElementById('sparklineTrendText');
+
+        let lastLiveKw = 0;
+        let lastLiveStale = true;
+        let chartMode = 'watts';
+
+        function saveChartPrefs() {
+            const prefs = {
+                interval: Number(intervalSlider.value),
+                group: Number(groupSlider.value),
+                chartMode
+            };
+            localStorage.setItem(CHART_PREFS_KEY, JSON.stringify(prefs));
+        }
+
+        function loadChartPrefs() {
+            try {
+                const raw = localStorage.getItem(CHART_PREFS_KEY);
+                if (!raw) {
+                    return;
+                }
+                const prefs = JSON.parse(raw);
+
+                if (prefs.interval) {
+                    intervalSlider.value = clamp(Number(prefs.interval), 1, 720);
+                    intervalInput.value = intervalSlider.value;
+                }
+
+                if (prefs.group) {
+                    groupSlider.value = clamp(Number(prefs.group), 1, 1440);
+                    groupInput.value = groupSlider.value;
+                }
+
+                if (prefs.chartMode) {
+                    chartMode = ['rupee', 'watts', 'both'].includes(prefs.chartMode)
+                        ? prefs.chartMode
+                        : chartMode;
+                }
+            } catch (_error) {
+                // Ignore malformed local storage values.
+            }
+        }
+
+        function getCssVar(name) {
+            return getComputedStyle(document.body).getPropertyValue(name).trim();
+        }
+
         function debounce(func, delay) {
             let timeoutId;
-            return function() {
+            return function () {
                 const context = this;
                 const args = arguments;
                 clearTimeout(timeoutId);
@@ -202,101 +568,446 @@
             };
         }
 
-        // Update all related elements
-        function updateAll() {
-            // Update displayed values
-            intervalValueSpan.textContent = intervalSlider.value;
-            groupValueSpan.textContent = groupSlider.value;
-            intervalInput.value = intervalSlider.value;
-            groupInput.value = groupSlider.value;
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
 
+        function formatBalance(value) {
+            const number = Number(value);
+            if (!Number.isFinite(number)) {
+                return 'N/A';
+            }
+            return `₹${number.toFixed(2)}`;
+        }
 
-            // Update graph (debounced)
+        function applyTheme(theme) {
+            const normalized = theme === 'light' ? 'light' : 'dark';
+            document.body.setAttribute('data-theme', normalized);
+            themeToggle.textContent = normalized === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
+            localStorage.setItem(THEME_KEY, normalized);
+
+            updateGraphDebounced();
+            renderLiveDial(lastLiveKw, lastLiveStale);
+            updateLiveTrend();
+        }
+
+        function setChartMode(mode) {
+            chartMode = ['rupee', 'watts', 'both'].includes(mode) ? mode : 'both';
+
+            chartModeButtons.forEach(button => {
+                button.classList.toggle('active', button.dataset.chartMode === chartMode);
+            });
+
+            saveChartPrefs();
             updateGraphDebounced();
         }
 
-        // Debounced version of updateGraph
-        const updateGraphDebounced = debounce(updateGraph, 300);
+        function renderSparkline(points) {
+            const textColor = getCssVar('--text-secondary');
+            const accent = getCssVar('--accent');
+            const gridColor = getCssVar('--grid-color');
 
-        // Update fetch URL with slider values
-        // Update fetch URL with slider values
-        function updateGraph() {
-            const intervalValue = intervalSlider.value;
-            const groupValue = groupSlider.value;
-
-            fetch(`/dash_data?interval=${intervalValue}&group=${groupValue}`)
-                .then(response => response.json())
-                .then(data => {
-                    const timestamps = [];
-                    const amountsUsed = [];
-                    const hoverTexts = []; // Array to store custom hover text
-
-                    data.forEach(record => {
-                        const timestamp = new Date(record.timestamp);
-                        const amount = parseFloat(record.amount_used).toFixed(2); // Round to 2 decimal places
-                        const derivedValue = (parseFloat(amount) * 60 / (8.33 * groupValue) * 1000 ).toFixed(2); // Example derived value
-                        
-                        timestamps.push(timestamp);
-                        amountsUsed.push(parseFloat(amount)); // Keep original value for plotting
-                        hoverTexts.push(`${timestamp.toLocaleString()}, Amount: ₹${amount}, WH: ${derivedValue}`);
-                    });
-
-                    const amountUsedData = [{
-                        x: timestamps,
-                        y: amountsUsed,
-                        type: 'scatter',
-                        mode: 'lines+markers',
-                        text: hoverTexts, // Custom hover text
-                        hoverinfo: 'text', // Only show custom text on hover
-                        hoverlabel: {
-                            bgcolor: '#fff', // Background color for hover labels
-                            font: {
-                                family: 'Arial',
-                                size: 12
-                            }
+            if (!Array.isArray(points) || points.length === 0) {
+                Plotly.react('live-load-sparkline', [], {
+                    paper_bgcolor: 'transparent',
+                    plot_bgcolor: 'transparent',
+                    xaxis: { visible: false },
+                    yaxis: { visible: false },
+                    annotations: [
+                        {
+                            text: 'No recent live trend data',
+                            showarrow: false,
+                            font: { color: textColor, size: 12 }
                         }
-                    }];
-                    const layout = {
-                        title: 'Amount Used vs Time',
-                        yaxis: { 
-                            title: 'Amount Used (₹)', 
-                            tickformat: '.2f' // Format y-axis ticks to 2 decimal places
-                        }
-                    };
-
-                    Plotly.newPlot('amount-used-graph', amountUsedData, layout);
+                    ],
+                    margin: { l: 10, r: 10, t: 8, b: 8 }
+                }, {
+                    displayModeBar: false,
+                    responsive: true
                 });
+                sparklineTrendTextEl.textContent = 'Live trend: awaiting data…';
+                return;
+            }
+
+            const x = [];
+            const y = [];
+
+            points.forEach(point => {
+                const ts = new Date(point.timestamp);
+                const loadKw = Number(point.present_load_kw);
+                if (!Number.isNaN(ts.getTime()) && Number.isFinite(loadKw)) {
+                    x.push(ts);
+                    y.push(loadKw * 1000);
+                }
+            });
+
+            if (y.length === 0) {
+                renderSparkline([]);
+                return;
+            }
+
+            const trace = [
+                {
+                    x,
+                    y,
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: accent, width: 2 },
+                    fill: 'tozeroy',
+                    fillcolor: 'rgba(56, 189, 248, 0.15)',
+                    hovertemplate: '%{x}<br>%{y:.0f} W<extra></extra>'
+                }
+            ];
+
+            const layout = {
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                margin: { l: 36, r: 10, t: 8, b: 24 },
+                xaxis: {
+                    showgrid: true,
+                    gridcolor: gridColor,
+                    tickfont: { color: textColor, size: 10 }
+                },
+                yaxis: {
+                    title: { text: 'W', font: { color: textColor, size: 10 } },
+                    tickfont: { color: textColor, size: 10 },
+                    showgrid: true,
+                    gridcolor: gridColor
+                },
+                showlegend: false
+            };
+
+            Plotly.react('live-load-sparkline', trace, layout, {
+                displayModeBar: false,
+                responsive: true
+            });
+
+            const first = y[0];
+            const last = y[y.length - 1];
+            const delta = last - first;
+            const trendArrow = delta > 20 ? '↗' : delta < -20 ? '↘' : '→';
+            const trendLabel = delta > 20 ? 'rising' : delta < -20 ? 'falling' : 'steady';
+            sparklineTrendTextEl.textContent = `Live trend (last 15m): ${trendArrow} ${trendLabel}`;
         }
 
+        async function updateLiveTrend() {
+            try {
+                const response = await fetch('/live_trend?minutes=15', { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
 
+                const data = await response.json();
+                renderSparkline(data.points || []);
+            } catch (_error) {
+                renderSparkline([]);
+            }
+        }
 
-        // Add event listeners
-        intervalSlider.addEventListener('input', updateAll);
-        groupSlider.addEventListener('input', updateAll);
+        function renderLiveDial(loadKw, isStale) {
+            const safeValue = Number.isFinite(loadKw) ? loadKw : 0;
+            const clampedValue = clamp(safeValue, 0, MAX_DIAL_KW);
+            lastLiveKw = clampedValue;
+            lastLiveStale = Boolean(isStale);
 
-        intervalInput.addEventListener('blur', () => {
-            intervalSlider.value = intervalInput.value;
-            updateAll();
+            const textColor = getCssVar('--text-primary');
+
+            const dialData = [
+                {
+                    type: 'indicator',
+                    mode: 'gauge+number',
+                    value: clampedValue,
+                    number: {
+                        suffix: ' kW',
+                        font: { color: textColor, size: 28 }
+                    },
+                    gauge: {
+                        axis: {
+                            range: [0, MAX_DIAL_KW],
+                            tickcolor: textColor,
+                            tickfont: { color: textColor }
+                        },
+                        bar: {
+                            color: isStale ? '#6b7280' : getCssVar('--accent')
+                        },
+                        steps: [
+                            { range: [0, 1.2], color: 'rgba(34, 197, 94, 0.30)' },
+                            { range: [1.2, 2.5], color: 'rgba(245, 158, 11, 0.30)' },
+                            { range: [2.5, MAX_DIAL_KW], color: 'rgba(239, 68, 68, 0.30)' }
+                        ]
+                    }
+                }
+            ];
+
+            const dialLayout = {
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                margin: { l: 24, r: 24, t: 16, b: 10 },
+                font: { color: textColor }
+            };
+
+            Plotly.react('live-usage-dial', dialData, dialLayout, {
+                displayModeBar: false,
+                responsive: true
+            });
+
+            liveUsageWEl.textContent = Math.round(clampedValue * 1000).toLocaleString();
+        }
+
+        function updatePowerSource(isDgOn, duration) {
+            sourceBadgeEl.classList.remove('dg-on', 'eb-on');
+            if (isDgOn) {
+                sourceBadgeEl.classList.add('dg-on');
+                sourceBadgeEl.textContent = '⚡ DG';
+            } else {
+                sourceBadgeEl.classList.add('eb-on');
+                sourceBadgeEl.textContent = '🔌 EB';
+            }
+
+            sourceDurationEl.textContent = duration ? `for ${duration}` : '';
+        }
+
+        function setLiveStatusPill(kind, text) {
+            liveStaleIndicatorEl.classList.remove('status-ok', 'status-warn', 'status-error');
+
+            if (kind === 'ok') {
+                liveStaleIndicatorEl.classList.add('status-ok');
+            } else if (kind === 'warn') {
+                liveStaleIndicatorEl.classList.add('status-warn');
+            } else {
+                liveStaleIndicatorEl.classList.add('status-error');
+            }
+
+            liveStaleIndicatorEl.textContent = text;
+        }
+
+        async function updateLiveStatus() {
+            try {
+                const response = await fetch('/live_status', { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                const loadKw = Number(data.present_load_kw);
+                const isStale = Boolean(data.is_stale);
+
+                renderLiveDial(Number.isFinite(loadKw) ? loadKw : 0, isStale);
+
+                if (meterBalanceEl) {
+                    meterBalanceEl.textContent = formatBalance(data.balance);
+                }
+
+                updatePowerSource(Boolean(data.is_dg_on), data.duration || '');
+
+                if (isStale) {
+                    const age = Number(data.age_seconds);
+                    const suffix = Number.isFinite(age) ? `(${age}s old)` : '';
+                    setLiveStatusPill('warn', `Data is stale ${suffix}`.trim());
+                } else {
+                    setLiveStatusPill('ok', 'Live feed healthy');
+                }
+
+                if (data.timestamp) {
+                    const updatedAt = new Date(data.timestamp);
+                    if (!Number.isNaN(updatedAt.getTime())) {
+                        const health = data.health === 'healthy' ? 'Healthy' : data.health === 'stale' ? 'Stale' : 'Unavailable';
+                        liveMetaTextEl.textContent = `Last successful fetch: ${updatedAt.toLocaleString()} • Health: ${health} • Dial range: 0–3.5 kW`;
+                    }
+                }
+            } catch (error) {
+                renderLiveDial(lastLiveKw, true);
+                setLiveStatusPill('error', 'Live data unavailable');
+                liveMetaTextEl.textContent = 'Could not refresh live status. Will retry automatically.';
+            }
+        }
+
+        function sanitizeControls() {
+            const interval = clamp(Number(intervalInput.value || intervalSlider.value), 1, 720);
+            const group = clamp(Number(groupInput.value || groupSlider.value), 1, 1440);
+
+            intervalSlider.value = interval;
+            intervalInput.value = interval;
+            intervalValueSpan.textContent = interval;
+
+            groupSlider.value = group;
+            groupInput.value = group;
+            groupValueSpan.textContent = group;
+
+            saveChartPrefs();
+
+            return { interval, group };
+        }
+
+        async function updateGraph() {
+            const controls = sanitizeControls();
+
+            const response = await fetch(`/dash_data?interval=${controls.interval}&group=${controls.group}`);
+            const data = await response.json();
+
+            const timestamps = [];
+            const amountsUsed = [];
+            const estimatedWatts = [];
+            const hoverTexts = [];
+
+            data.forEach(record => {
+                const timestamp = new Date(record.timestamp);
+                const amountNumber = Number(record.amount_used);
+
+                if (!Number.isFinite(amountNumber) || Number.isNaN(timestamp.getTime())) {
+                    return;
+                }
+
+                const amount = amountNumber.toFixed(2);
+                const derivedWatts = ((amountNumber * 60) / (TARIFF_RUPEE_PER_KWH * controls.group) * 1000).toFixed(2);
+
+                timestamps.push(timestamp);
+                amountsUsed.push(amountNumber);
+                estimatedWatts.push(Number(derivedWatts));
+                hoverTexts.push(`${timestamp.toLocaleString()}, Amount: ₹${amount}, Power: ${derivedWatts} W`);
+            });
+
+            const textColor = getCssVar('--text-primary');
+            const gridColor = getCssVar('--grid-color');
+            const accent = getCssVar('--accent');
+
+            const traces = [];
+
+            const rupeeTrace = {
+                x: timestamps,
+                y: amountsUsed,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Amount (₹)',
+                line: { color: accent, width: 2 },
+                marker: { color: accent, size: 5 },
+                text: hoverTexts,
+                hoverinfo: 'text',
+                yaxis: 'y',
+                hoverlabel: {
+                    bgcolor: getCssVar('--bg-elevated'),
+                    bordercolor: getCssVar('--border'),
+                    font: { color: textColor, size: 12 }
+                }
+            };
+
+            const wattsTrace = {
+                x: timestamps,
+                y: estimatedWatts,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Estimated Power (W)',
+                line: { color: '#f59e0b', width: 2 },
+                marker: { color: '#f59e0b', size: 5 },
+                text: hoverTexts,
+                hoverinfo: 'text',
+                yaxis: chartMode === 'both' ? 'y2' : 'y',
+                hoverlabel: {
+                    bgcolor: getCssVar('--bg-elevated'),
+                    bordercolor: getCssVar('--border'),
+                    font: { color: textColor, size: 12 }
+                }
+            };
+
+            if (chartMode === 'rupee' || chartMode === 'both') {
+                traces.push(rupeeTrace);
+            }
+
+            if (chartMode === 'watts' || chartMode === 'both') {
+                traces.push(wattsTrace);
+            }
+
+            const yAxisTitle = chartMode === 'watts' ? 'Estimated Power (W)' : 'Amount Used (₹)';
+
+            const layout = {
+                title: { text: chartMode === 'both' ? 'Usage Trend (₹ + W)' : 'Usage Trend', font: { color: textColor, size: 16 } },
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                font: { color: textColor },
+                margin: { l: 50, r: chartMode === 'both' ? 56 : 16, t: 48, b: 48 },
+                xaxis: {
+                    title: 'Time',
+                    gridcolor: gridColor,
+                    zerolinecolor: gridColor
+                },
+                yaxis: {
+                    title: yAxisTitle,
+                    tickformat: chartMode === 'watts' ? '.0f' : '.2f',
+                    gridcolor: gridColor,
+                    zerolinecolor: gridColor
+                },
+                showlegend: chartMode === 'both'
+            };
+
+            if (chartMode === 'both') {
+                layout.yaxis2 = {
+                    title: 'Estimated Power (W)',
+                    tickformat: '.0f',
+                    overlaying: 'y',
+                    side: 'right',
+                    gridcolor: 'transparent',
+                    zerolinecolor: 'transparent'
+                };
+            }
+
+            Plotly.react('amount-used-graph', traces, layout, {
+                displayModeBar: false,
+                responsive: true
+            });
+        }
+
+        const updateGraphDebounced = debounce(updateGraph, 250);
+
+        chartModeButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                setChartMode(button.dataset.chartMode);
+            });
         });
-        groupInput.addEventListener('blur', () => {
-            groupSlider.value = groupInput.value;
-            updateAll();
+
+        intervalSlider.addEventListener('input', () => {
+            intervalInput.value = intervalSlider.value;
+            saveChartPrefs();
+            updateGraphDebounced();
+        });
+
+        groupSlider.addEventListener('input', () => {
+            groupInput.value = groupSlider.value;
+            saveChartPrefs();
+            updateGraphDebounced();
         });
 
         intervalInput.addEventListener('change', () => {
-            intervalSlider.value = intervalInput.value;
-            updateAll();
+            saveChartPrefs();
+            updateGraphDebounced();
+        });
+        intervalInput.addEventListener('blur', () => {
+            saveChartPrefs();
+            updateGraphDebounced();
         });
         groupInput.addEventListener('change', () => {
-            groupSlider.value = groupInput.value;
-            updateAll();
+            saveChartPrefs();
+            updateGraphDebounced();
+        });
+        groupInput.addEventListener('blur', () => {
+            saveChartPrefs();
+            updateGraphDebounced();
         });
 
+        themeToggle.addEventListener('click', () => {
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            applyTheme(isDark ? 'light' : 'dark');
+        });
 
-        // Initial synchronization
-        updateAll();
-
-
+        const storedTheme = localStorage.getItem(THEME_KEY);
+        loadChartPrefs();
+        applyTheme(storedTheme || 'dark');
+        setChartMode(chartMode);
+        sanitizeControls();
+        updateGraphDebounced();
+        updateLiveStatus();
+        updateLiveTrend();
+        setInterval(updateLiveStatus, LIVE_REFRESH_MS);
+        setInterval(updateLiveTrend, LIVE_REFRESH_MS);
     </script>
 </body>
 </html>

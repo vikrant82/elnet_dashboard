@@ -6,25 +6,56 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def format_duration(delta):
+    """Format a timedelta as a compact hours/minutes string."""
+    hours = delta.seconds // 3600
+    minutes = (delta.seconds % 3600) // 60
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def build_dg_status(state):
+    """Build DG/EB status dictionary for dashboard rendering and APIs."""
+    dg_status = {"is_dg_on": False, "duration": ""}
+
+    if not state:
+        return dg_status
+
+    dg_status["is_dg_on"] = state.is_dg_on
+
+    if state.dg_state_changed_at:
+        duration = datetime.now() - state.dg_state_changed_at
+        dg_status["duration"] = format_duration(duration)
+
+    return dg_status
+
+
 def get_recent_recharges(database_path, limit=5):
     """Fetch recent recharge records from database"""
     conn = None
     try:
         conn = sqlite3.connect(database_path)
         c = conn.cursor()
-        
+
         # Query for recent recharges (where recharge_amount > 0)
-        c.execute('''
+        c.execute(
+            """
             SELECT timestamp, recharge_amount
             FROM power_usage
             WHERE recharge_amount > 0
             ORDER BY timestamp DESC
             LIMIT ?
-        ''', (limit,))
-        
+        """,
+            (limit,),
+        )
+
         records = c.fetchall()
-        return [{'timestamp': record[0], 'amount': float(record[1])} for record in records]
-            
+        return [
+            {"timestamp": record[0], "amount": float(record[1])} for record in records
+        ]
+
     except sqlite3.Error as e:
         logger.error(f"Database error fetching recharges: {e}")
         return []
@@ -32,28 +63,106 @@ def get_recent_recharges(database_path, limit=5):
         if conn:
             conn.close()
 
-def create_dashboard_bp(api_client, config, state=None):
-    dashboard_bp = Blueprint('dashboard', __name__)
 
-    @dashboard_bp.route('/dash_data')
+def get_latest_power_snapshot(database_path):
+    """Fetch latest power row from DB for lightweight live UI updates."""
+    conn = None
+    try:
+        conn = sqlite3.connect(database_path)
+        c = conn.cursor()
+        c.execute("""
+            SELECT timestamp, present_load, balance
+            FROM power_usage
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """)
+        record = c.fetchone()
+        if not record:
+            return None
+
+        timestamp_utc = datetime.fromisoformat(record[0]).replace(tzinfo=pytz.utc)
+        return {
+            "timestamp": timestamp_utc,
+            "present_load": float(record[1]),
+            "balance": float(record[2]),
+        }
+    except (sqlite3.Error, TypeError, ValueError) as e:
+        logger.error(f"Database error fetching latest power snapshot: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_recent_present_loads(database_path, minutes=15, limit=180):
+    """Fetch recent present-load values for the live sparkline."""
+    conn = None
+    try:
+        conn = sqlite3.connect(database_path)
+        c = conn.cursor()
+
+        now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
+        window_start_utc = now_utc - timedelta(minutes=minutes)
+
+        c.execute(
+            """
+            SELECT timestamp, present_load
+            FROM power_usage
+            WHERE timestamp >= ?
+            ORDER BY timestamp ASC
+            LIMIT ?
+            """,
+            (window_start_utc.replace(tzinfo=None), limit),
+        )
+        records = c.fetchall()
+
+        points = []
+        for timestamp_str, present_load in records:
+            try:
+                timestamp_utc = datetime.fromisoformat(timestamp_str).replace(
+                    tzinfo=pytz.utc
+                )
+                points.append(
+                    {
+                        "timestamp": timestamp_utc.isoformat(),
+                        "present_load_kw": float(present_load),
+                    }
+                )
+            except (TypeError, ValueError):
+                continue
+
+        return points
+    except sqlite3.Error as e:
+        logger.error(f"Database error fetching recent present loads: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def create_dashboard_bp(api_client, config, state=None):
+    dashboard_bp = Blueprint("dashboard", __name__)
+
+    @dashboard_bp.route("/dash_data")
     def dashboard():
+        conn = None
         try:
             conn = sqlite3.connect(config.DATABASE)
             c = conn.cursor()
-            
+
             try:
-                interval_hours = min(int(request.args.get('interval', 24)), 720)
-                group_minutes = min(int(request.args.get('group', 30)), 1440)
+                interval_hours = min(int(request.args.get("interval", 24)), 720)
+                group_minutes = min(int(request.args.get("group", 30)), 1440)
             except ValueError:
-                return jsonify({'error': 'Invalid interval or group parameter'}), 400
-                
+                return jsonify({"error": "Invalid interval or group parameter"}), 400
+
             now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
             interval_start_utc = now_utc - timedelta(hours=interval_hours)
-            
+
             logger.debug(f"Interval hours: {interval_hours}")
             logger.debug(f"Interval start time (UTC): {interval_start_utc}")
-            
-            query = '''
+
+            query = """
                 SELECT
                     strftime('%Y-%m-%d %H:%M', timestamp, '-' ||
                         (strftime('%M', timestamp) % ?) || ' minutes') AS bucket,
@@ -62,96 +171,143 @@ def create_dashboard_bp(api_client, config, state=None):
                 WHERE timestamp >= ?
                 GROUP BY bucket
                 ORDER BY bucket
-            '''
-            
+            """
+
             c.execute(query, (group_minutes, interval_start_utc.replace(tzinfo=None)))
             records = c.fetchall()
-            
+
             data = []
             for record in records:
                 try:
-                    bucket_time = datetime.strptime(record[0], '%Y-%m-%d %H:%M')
+                    bucket_time = datetime.strptime(record[0], "%Y-%m-%d %H:%M")
                     bucket_utc = pytz.utc.localize(bucket_time)
-                    
-                    data.append({
-                        'timestamp': bucket_utc.strftime('%a, %d %b %Y %H:%M:%S GMT'),
-                        'amount_used': float(record[1])
-                    })
+
+                    data.append(
+                        {
+                            "timestamp": bucket_utc.strftime(
+                                "%a, %d %b %Y %H:%M:%S GMT"
+                            ),
+                            "amount_used": float(record[1]),
+                        }
+                    )
                 except (ValueError, TypeError) as e:
                     logger.error(f"Bucket parsing error: {e}")
                     continue
-            
+
             return jsonify(data)
-            
+
         except sqlite3.Error as e:
             logger.error(f"Database error: {e}")
-            return jsonify({'error': 'Database error'}), 500
+            return jsonify({"error": "Database error"}), 500
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
-            return jsonify({'error': 'Internal server error'}), 500
+            return jsonify({"error": "Internal server error"}), 500
         finally:
             if conn:
                 conn.close()
 
-    @dashboard_bp.route('/')
+    @dashboard_bp.route("/live_status")
+    def live_status():
+        """Return latest data for live widgets (dial and source badge)."""
+        latest = get_latest_power_snapshot(config.DATABASE)
+        dg_status = build_dg_status(state)
+
+        if not latest:
+            return jsonify(
+                {
+                    "present_load_kw": 0,
+                    "balance": None,
+                    "timestamp": None,
+                    "last_successful_fetch": None,
+                    "health": "unavailable",
+                    "is_stale": True,
+                    "age_seconds": None,
+                    "is_dg_on": dg_status["is_dg_on"],
+                    "duration": dg_status["duration"],
+                }
+            )
+
+        now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
+        age_seconds = int((now_utc - latest["timestamp"]).total_seconds())
+        is_stale = age_seconds > 300
+
+        return jsonify(
+            {
+                "present_load_kw": latest["present_load"],
+                "balance": latest["balance"],
+                "timestamp": latest["timestamp"].isoformat(),
+                "last_successful_fetch": latest["timestamp"].isoformat(),
+                "health": "stale" if is_stale else "healthy",
+                "is_stale": is_stale,
+                "age_seconds": age_seconds,
+                "is_dg_on": dg_status["is_dg_on"],
+                "duration": dg_status["duration"],
+            }
+        )
+
+    @dashboard_bp.route("/live_trend")
+    def live_trend():
+        """Return short-window present load data for sparkline rendering."""
+        try:
+            window_minutes = int(request.args.get("minutes", 15))
+        except ValueError:
+            return jsonify({"error": "Invalid minutes parameter"}), 400
+
+        window_minutes = min(max(window_minutes, 5), 120)
+        points = get_recent_present_loads(config.DATABASE, minutes=window_minutes)
+
+        return jsonify(
+            {
+                "window_minutes": window_minutes,
+                "points": points,
+            }
+        )
+
+    @dashboard_bp.route("/")
     def index():
         home_data = api_client.fetch_home_data()
         recent_recharges = get_recent_recharges(config.DATABASE)
-        
-        # Prepare DG status data
-        dg_status = {
-            'is_dg_on': False,
-            'duration': ''
-        }
-        
-        if state:
-            dg_status['is_dg_on'] = state.is_dg_on
-            if state.is_dg_on and state.dg_state_changed_at:
-                # Calculate duration
-                duration = datetime.now() - state.dg_state_changed_at
-                hours = duration.seconds // 3600
-                minutes = (duration.seconds % 3600) // 60
-                if hours > 0:
-                    dg_status['duration'] = f"{hours}h {minutes}m"
-                else:
-                    dg_status['duration'] = f"{minutes}m"
-            elif not state.is_dg_on and state.dg_state_changed_at:
-                # Show how long we've been on EB
-                duration = datetime.now() - state.dg_state_changed_at
-                hours = duration.seconds // 3600
-                minutes = (duration.seconds % 3600) // 60
-                if hours > 0:
-                    dg_status['duration'] = f"{hours}h {minutes}m"
-                else:
-                    dg_status['duration'] = f"{minutes}m"
-        
-        if home_data and home_data.get('Data'):
-            data = home_data['Data']
+        dg_status = build_dg_status(state)
+
+        if home_data and home_data.get("Data"):
+            data = home_data["Data"]
             now = datetime.now()
-            
+
             # Daily Average
             start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
             hours_since_sod = (now - start_of_day).total_seconds() / 3600
             if hours_since_sod > 0:
-                data['daily_avg_eb'] = (float(data.get('CurrentDay_EB', 0)) / hours_since_sod / 8.33) * 1000
-                data['daily_avg_dg'] = (float(data.get('CurrentDay_DG', 0)) / hours_since_sod / 8.33) * 1000
+                data["daily_avg_eb"] = (
+                    float(data.get("CurrentDay_EB", 0)) / hours_since_sod / 8.33
+                ) * 1000
+                data["daily_avg_dg"] = (
+                    float(data.get("CurrentDay_DG", 0)) / hours_since_sod / 8.33
+                ) * 1000
             else:
-                data['daily_avg_eb'] = 0
-                data['daily_avg_dg'] = 0
+                data["daily_avg_eb"] = 0
+                data["daily_avg_dg"] = 0
 
             # Monthly Average
-            start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            start_of_month = now.replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            )
             hours_since_som = (now - start_of_month).total_seconds() / 3600
             if hours_since_som > 0:
-                data['monthly_avg_eb'] = (float(data.get('CurrentMonth_EB', 0)) / hours_since_som / 8.33) * 1000
-                data['monthly_avg_dg'] = (float(data.get('CurrentMonth_DG', 0)) / hours_since_som / 8.33) * 1000
+                data["monthly_avg_eb"] = (
+                    float(data.get("CurrentMonth_EB", 0)) / hours_since_som / 8.33
+                ) * 1000
+                data["monthly_avg_dg"] = (
+                    float(data.get("CurrentMonth_DG", 0)) / hours_since_som / 8.33
+                ) * 1000
             else:
-                data['monthly_avg_eb'] = 0
-                data['monthly_avg_dg'] = 0
+                data["monthly_avg_eb"] = 0
+                data["monthly_avg_dg"] = 0
 
-        return render_template('dashboard.html',
-                             home_data=home_data.get('Data') if home_data else None,
-                             recent_recharges=recent_recharges,
-                             dg_status=dg_status)
+        return render_template(
+            "dashboard.html",
+            home_data=home_data.get("Data") if home_data else None,
+            recent_recharges=recent_recharges,
+            dg_status=dg_status,
+        )
 
     return dashboard_bp

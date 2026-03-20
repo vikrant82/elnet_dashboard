@@ -143,7 +143,11 @@ def get_recent_present_loads(database_path, minutes=15, limit=180):
 def get_bucketed_amount_usage(
     database_path, interval_start_utc, interval_end_utc, group_minutes
 ):
-    """Fetch grouped amount-used rows for a UTC interval."""
+    """Fetch grouped amount-used rows for a UTC interval.
+
+    Drops the trailing in-progress bucket so chart endpoints don't show an
+    artificial dip at the end of the series.
+    """
     conn = None
     try:
         conn = sqlite3.connect(database_path)
@@ -173,6 +177,9 @@ def get_bucketed_amount_usage(
         for bucket_str, total_amount_used in records:
             try:
                 bucket_time = datetime.strptime(bucket_str, "%Y-%m-%d %H:%M")
+                bucket_end_time = bucket_time + timedelta(minutes=group_minutes)
+                if bucket_end_time > interval_end_utc.replace(tzinfo=None):
+                    continue
                 parsed_records.append((bucket_time, float(total_amount_used or 0)))
             except (TypeError, ValueError):
                 continue

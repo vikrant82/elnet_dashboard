@@ -274,6 +274,33 @@
             height: 520px;
         }
 
+        .chart-legend-mobile {
+            display: none;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            margin: 6px 0 2px;
+        }
+
+        .chart-legend-mobile .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            font-weight: 700;
+        }
+
+        .chart-legend-mobile .legend-swatch {
+            width: 28px;
+            border-top: 3px solid var(--accent);
+            border-radius: 999px;
+            display: inline-block;
+        }
+
+        .chart-legend-mobile .legend-swatch.dashed {
+            border-top-style: dashed;
+        }
+
         .controls-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -359,6 +386,35 @@
 
             #amount-used-graph {
                 height: 420px;
+            }
+
+            .chart-legend-mobile {
+                display: flex;
+                gap: 6px 10px;
+                margin: 4px 0 2px;
+            }
+
+            .chart-legend-mobile .legend-item {
+                gap: 6px;
+                font-size: 0.86rem;
+            }
+
+            .chart-legend-mobile .legend-swatch {
+                width: 22px;
+                border-top-width: 2px;
+            }
+        }
+
+        @media (max-width: 420px) {
+            .chart-legend-mobile {
+                gap: 4px 8px;
+                margin-top: 2px;
+            }
+
+            .chart-legend-mobile .legend-item {
+                width: 100%;
+                font-size: 0.82rem;
+                line-height: 1.2;
             }
         }
     </style>
@@ -461,6 +517,16 @@
 
         <div class="card chart-card">
             <h2>Amount Used vs Time</h2>
+            <div id="amount-used-legend-mobile" class="chart-legend-mobile" hidden>
+                <span class="legend-item">
+                    <span id="legendPrimarySwatch" class="legend-swatch"></span>
+                    <span id="legendPrimaryLabel">Estimated Power (W)</span>
+                </span>
+                <span id="legendCompareItem" class="legend-item">
+                    <span id="legendCompareSwatch" class="legend-swatch dashed"></span>
+                    <span id="legendCompareLabel">Avg last 7 days (W)</span>
+                </span>
+            </div>
             <div id="amount-used-graph"></div>
         </div>
 
@@ -511,6 +577,12 @@
         const compareDaysValueSpan = document.getElementById('compareDaysValue');
         const themeToggle = document.getElementById('themeToggle');
         const chartModeButtons = Array.from(document.querySelectorAll('.chart-mode-btn'));
+        const amountUsedLegendMobileEl = document.getElementById('amount-used-legend-mobile');
+        const legendPrimaryLabelEl = document.getElementById('legendPrimaryLabel');
+        const legendCompareItemEl = document.getElementById('legendCompareItem');
+        const legendCompareLabelEl = document.getElementById('legendCompareLabel');
+        const legendPrimarySwatchEl = document.getElementById('legendPrimarySwatch');
+        const legendCompareSwatchEl = document.getElementById('legendCompareSwatch');
 
         const meterBalanceEl = document.getElementById('meterBalance');
         const sourceBadgeEl = document.getElementById('powerSourceBadge');
@@ -929,6 +1001,7 @@
             const gridColor = getCssVar('--grid-color');
             const accent = getCssVar('--accent');
 
+            const isMobileViewport = window.matchMedia('(max-width: 900px)').matches;
             const hasCompareSeries = compareAmounts.some(value => Number.isFinite(value));
             const compareDaysAvailable = Number(comparePayload.days_available || 0);
             const compareLabel = compareDaysAvailable > 0
@@ -941,6 +1014,20 @@
             const primaryName = isRupeeMode ? 'Amount (₹)' : 'Estimated Power (W)';
             const compareName = isRupeeMode ? `${compareLabel} (₹)` : `${compareLabel} (W)`;
             const yAxisTitle = isRupeeMode ? 'Amount Used (₹)' : 'Estimated Power (W)';
+            const primaryLegendColor = isRupeeMode ? accent : '#f59e0b';
+            const compareLegendColor = isRupeeMode ? '#34d399' : '#fbbf24';
+
+            if (amountUsedLegendMobileEl) {
+                const shouldShowMobileLegend = isMobileViewport && hasCompareSeries;
+                amountUsedLegendMobileEl.hidden = !shouldShowMobileLegend;
+                if (shouldShowMobileLegend) {
+                    legendPrimaryLabelEl.textContent = primaryName;
+                    legendCompareItemEl.hidden = !hasCompareSeries;
+                    legendCompareLabelEl.textContent = compareName;
+                    legendPrimarySwatchEl.style.borderTopColor = primaryLegendColor;
+                    legendCompareSwatchEl.style.borderTopColor = compareLegendColor;
+                }
+            }
 
             const traces = [
                 {
@@ -949,8 +1036,8 @@
                     type: 'scatter',
                     mode: 'lines+markers',
                     name: primaryName,
-                    line: { color: isRupeeMode ? accent : '#f59e0b', width: 2 },
-                    marker: { color: isRupeeMode ? accent : '#f59e0b', size: 5 },
+                    line: { color: primaryLegendColor, width: 2 },
+                    marker: { color: primaryLegendColor, size: 5 },
                     text: hoverTexts,
                     hoverinfo: 'text',
                     hoverlabel: {
@@ -969,7 +1056,7 @@
                         type: 'scatter',
                         mode: 'lines',
                         name: compareName,
-                        line: { color: isRupeeMode ? '#34d399' : '#fbbf24', width: 2, dash: 'dash' },
+                        line: { color: compareLegendColor, width: 2, dash: 'dash' },
                         text: compareHoverTexts,
                         hoverinfo: 'text',
                         connectgaps: false,
@@ -984,25 +1071,43 @@
 
             const layout = {
                 title: {
-                    text: `Usage Trend • Compare with last ${controls.compareDays} days`,
-                    font: { color: textColor, size: 16 }
+                    text: isMobileViewport
+                        ? `Usage Trend<br><sup>Compare with last ${controls.compareDays} days</sup>`
+                        : `Usage Trend • Compare with last ${controls.compareDays} days`,
+                    font: { color: textColor, size: isMobileViewport ? 14 : 16 }
                 },
                 paper_bgcolor: 'transparent',
                 plot_bgcolor: 'transparent',
                 font: { color: textColor },
-                margin: { l: 50, r: 16, t: 48, b: 48 },
+                margin: isMobileViewport
+                    ? { l: 54, r: 10, t: 68, b: 92 }
+                    : { l: 50, r: 16, t: 48, b: 48 },
                 xaxis: {
                     title: 'Time',
                     gridcolor: gridColor,
-                    zerolinecolor: gridColor
+                    zerolinecolor: gridColor,
+                    automargin: true,
+                    nticks: isMobileViewport ? 6 : 10,
+                    tickangle: isMobileViewport ? -45 : 0
                 },
                 yaxis: {
                     title: yAxisTitle,
                     tickformat: chartMode === 'watts' ? '.0f' : '.2f',
                     gridcolor: gridColor,
-                    zerolinecolor: gridColor
+                    zerolinecolor: gridColor,
+                    automargin: true
                 },
-                showlegend: traces.length > 1
+                showlegend: !isMobileViewport && traces.length > 1,
+                legend: !isMobileViewport && traces.length > 1
+                    ? {
+                        orientation: 'v',
+                        yanchor: 'top',
+                        y: 0.98,
+                        xanchor: 'left',
+                        x: 1.02,
+                        bgcolor: 'rgba(0,0,0,0)'
+                    }
+                    : undefined
             };
 
             Plotly.react('amount-used-graph', traces, layout, {
@@ -1012,6 +1117,8 @@
         }
 
         const updateGraphDebounced = debounce(updateGraph, 250);
+
+        window.addEventListener('resize', updateGraphDebounced);
 
         chartModeButtons.forEach(button => {
             button.addEventListener('click', () => {

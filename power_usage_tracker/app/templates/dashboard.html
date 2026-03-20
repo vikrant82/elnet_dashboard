@@ -487,7 +487,6 @@
                     <div class="chart-mode-toggle" role="group" aria-label="Chart Y-axis mode toggle">
                         <button id="chartModeRupee" class="chart-mode-btn" type="button" data-chart-mode="rupee">₹</button>
                         <button id="chartModeWatts" class="chart-mode-btn active" type="button" data-chart-mode="watts">W</button>
-                        <button id="chartModeBoth" class="chart-mode-btn" type="button" data-chart-mode="both">Both</button>
                     </div>
                 </div>
             </div>
@@ -559,7 +558,7 @@
                 }
 
                 if (prefs.chartMode) {
-                    chartMode = ['rupee', 'watts', 'both'].includes(prefs.chartMode)
+                    chartMode = ['rupee', 'watts'].includes(prefs.chartMode)
                         ? prefs.chartMode
                         : chartMode;
                 }
@@ -606,7 +605,7 @@
         }
 
         function setChartMode(mode) {
-            chartMode = ['rupee', 'watts', 'both'].includes(mode) ? mode : 'both';
+            chartMode = ['rupee', 'watts'].includes(mode) ? mode : 'watts';
 
             chartModeButtons.forEach(button => {
                 button.classList.toggle('active', button.dataset.chartMode === chartMode);
@@ -930,112 +929,68 @@
             const gridColor = getCssVar('--grid-color');
             const accent = getCssVar('--accent');
 
-            const traces = [];
             const hasCompareSeries = compareAmounts.some(value => Number.isFinite(value));
             const compareDaysAvailable = Number(comparePayload.days_available || 0);
             const compareLabel = compareDaysAvailable > 0
                 ? `Avg last ${compareDaysAvailable} day${compareDaysAvailable === 1 ? '' : 's'}`
                 : `Avg last ${controls.compareDays} days`;
 
-            const rupeeTrace = {
-                x: timestamps,
-                y: amountsUsed,
-                type: 'scatter',
-                mode: 'lines+markers',
-                name: 'Amount (₹)',
-                line: { color: accent, width: 2 },
-                marker: { color: accent, size: 5 },
-                text: hoverTexts,
-                hoverinfo: 'text',
-                yaxis: 'y',
-                hoverlabel: {
-                    bgcolor: getCssVar('--bg-elevated'),
-                    bordercolor: getCssVar('--border'),
-                    font: { color: textColor, size: 12 }
-                }
-            };
+            const isRupeeMode = chartMode === 'rupee';
+            const primarySeries = isRupeeMode ? amountsUsed : estimatedWatts;
+            const compareSeries = isRupeeMode ? compareAmounts : compareWatts;
+            const primaryName = isRupeeMode ? 'Amount (₹)' : 'Estimated Power (W)';
+            const compareName = isRupeeMode ? `${compareLabel} (₹)` : `${compareLabel} (W)`;
+            const yAxisTitle = isRupeeMode ? 'Amount Used (₹)' : 'Estimated Power (W)';
 
-            const rupeeCompareTrace = {
-                x: timestamps,
-                y: compareAmounts,
-                type: 'scatter',
-                mode: 'lines',
-                name: `${compareLabel} (₹)`,
-                line: { color: '#34d399', width: 2, dash: 'dash' },
-                text: compareHoverTexts,
-                hoverinfo: 'text',
-                yaxis: 'y',
-                connectgaps: false,
-                hoverlabel: {
-                    bgcolor: getCssVar('--bg-elevated'),
-                    bordercolor: getCssVar('--border'),
-                    font: { color: textColor, size: 12 }
+            const traces = [
+                {
+                    x: timestamps,
+                    y: primarySeries,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: primaryName,
+                    line: { color: isRupeeMode ? accent : '#f59e0b', width: 2 },
+                    marker: { color: isRupeeMode ? accent : '#f59e0b', size: 5 },
+                    text: hoverTexts,
+                    hoverinfo: 'text',
+                    hoverlabel: {
+                        bgcolor: getCssVar('--bg-elevated'),
+                        bordercolor: getCssVar('--border'),
+                        font: { color: textColor, size: 12 }
+                    }
                 }
-            };
+            ];
 
-            const wattsTrace = {
-                x: timestamps,
-                y: estimatedWatts,
-                type: 'scatter',
-                mode: 'lines+markers',
-                name: 'Estimated Power (W)',
-                line: { color: '#f59e0b', width: 2 },
-                marker: { color: '#f59e0b', size: 5 },
-                text: hoverTexts,
-                hoverinfo: 'text',
-                yaxis: chartMode === 'both' ? 'y2' : 'y',
-                hoverlabel: {
-                    bgcolor: getCssVar('--bg-elevated'),
-                    bordercolor: getCssVar('--border'),
-                    font: { color: textColor, size: 12 }
-                }
-            };
-
-            const wattsCompareTrace = {
-                x: timestamps,
-                y: compareWatts,
-                type: 'scatter',
-                mode: 'lines',
-                name: `${compareLabel} (W)`,
-                line: { color: '#fbbf24', width: 2, dash: 'dash' },
-                text: compareHoverTexts,
-                hoverinfo: 'text',
-                yaxis: chartMode === 'both' ? 'y2' : 'y',
-                connectgaps: false,
-                hoverlabel: {
-                    bgcolor: getCssVar('--bg-elevated'),
-                    bordercolor: getCssVar('--border'),
-                    font: { color: textColor, size: 12 }
-                }
-            };
-
-            if (chartMode === 'rupee' || chartMode === 'both') {
-                traces.push(rupeeTrace);
-                if (hasCompareSeries) {
-                    traces.push(rupeeCompareTrace);
-                }
+            if (hasCompareSeries) {
+                traces.push(
+                    {
+                        x: timestamps,
+                        y: compareSeries,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: compareName,
+                        line: { color: isRupeeMode ? '#34d399' : '#fbbf24', width: 2, dash: 'dash' },
+                        text: compareHoverTexts,
+                        hoverinfo: 'text',
+                        connectgaps: false,
+                        hoverlabel: {
+                            bgcolor: getCssVar('--bg-elevated'),
+                            bordercolor: getCssVar('--border'),
+                            font: { color: textColor, size: 12 }
+                        }
+                    }
+                );
             }
-
-            if (chartMode === 'watts' || chartMode === 'both') {
-                traces.push(wattsTrace);
-                if (hasCompareSeries) {
-                    traces.push(wattsCompareTrace);
-                }
-            }
-
-            const yAxisTitle = chartMode === 'watts' ? 'Estimated Power (W)' : 'Amount Used (₹)';
 
             const layout = {
                 title: {
-                    text: chartMode === 'both'
-                        ? `Usage Trend (₹ + W) • Compare with last ${controls.compareDays} days`
-                        : `Usage Trend • Compare with last ${controls.compareDays} days`,
+                    text: `Usage Trend • Compare with last ${controls.compareDays} days`,
                     font: { color: textColor, size: 16 }
                 },
                 paper_bgcolor: 'transparent',
                 plot_bgcolor: 'transparent',
                 font: { color: textColor },
-                margin: { l: 50, r: chartMode === 'both' ? 56 : 16, t: 48, b: 48 },
+                margin: { l: 50, r: 16, t: 48, b: 48 },
                 xaxis: {
                     title: 'Time',
                     gridcolor: gridColor,
@@ -1049,17 +1004,6 @@
                 },
                 showlegend: traces.length > 1
             };
-
-            if (chartMode === 'both') {
-                layout.yaxis2 = {
-                    title: 'Estimated Power (W)',
-                    tickformat: '.0f',
-                    overlaying: 'y',
-                    side: 'right',
-                    gridcolor: 'transparent',
-                    zerolinecolor: 'transparent'
-                };
-            }
 
             Plotly.react('amount-used-graph', traces, layout, {
                 displayModeBar: false,

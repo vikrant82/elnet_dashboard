@@ -22,6 +22,11 @@
 - Chart Y-axis mode toggle (`₹`, `W`, `Both`) with default `W`
 - Chart preferences persisted in localStorage (interval/group/mode)
 - Compact “This Month” and “Recent Recharges” cards to use dashboard space better
+- Compare overlay support in main usage chart:
+  - New `GET /dash_compare` endpoint for historical averaged comparison by aligned time buckets
+  - New “Compare with last X days” control (1–30 days) persisted in localStorage
+  - Dashed superimposed comparison lines in ₹ / W / Both modes
+  - Sparse-history-safe behavior using available samples only per bucket
 
 ## Tech Stack
 

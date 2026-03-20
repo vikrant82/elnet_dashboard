@@ -478,6 +478,11 @@
                     <input type="number" id="groupInput" min="1" max="1440" value="30">
                 </div>
                 <div class="control">
+                    <label for="compareDaysSlider">Compare with last <span id="compareDaysValue">7</span> days</label>
+                    <input type="range" id="compareDaysSlider" min="1" max="30" value="7">
+                    <input type="number" id="compareDaysInput" min="1" max="30" value="7">
+                </div>
+                <div class="control">
                     <label>Chart Y-axis mode</label>
                     <div class="chart-mode-toggle" role="group" aria-label="Chart Y-axis mode toggle">
                         <button id="chartModeRupee" class="chart-mode-btn" type="button" data-chart-mode="rupee">₹</button>
@@ -502,6 +507,9 @@
         const groupValueSpan = document.getElementById('groupValue');
         const intervalInput = document.getElementById('intervalInput');
         const groupInput = document.getElementById('groupInput');
+        const compareDaysSlider = document.getElementById('compareDaysSlider');
+        const compareDaysInput = document.getElementById('compareDaysInput');
+        const compareDaysValueSpan = document.getElementById('compareDaysValue');
         const themeToggle = document.getElementById('themeToggle');
         const chartModeButtons = Array.from(document.querySelectorAll('.chart-mode-btn'));
 
@@ -521,6 +529,7 @@
             const prefs = {
                 interval: Number(intervalSlider.value),
                 group: Number(groupSlider.value),
+                compareDays: Number(compareDaysSlider.value),
                 chartMode
             };
             localStorage.setItem(CHART_PREFS_KEY, JSON.stringify(prefs));
@@ -542,6 +551,11 @@
                 if (prefs.group) {
                     groupSlider.value = clamp(Number(prefs.group), 1, 1440);
                     groupInput.value = groupSlider.value;
+                }
+
+                if (prefs.compareDays) {
+                    compareDaysSlider.value = clamp(Number(prefs.compareDays), 1, 30);
+                    compareDaysInput.value = compareDaysSlider.value;
                 }
 
                 if (prefs.chartMode) {
@@ -825,6 +839,7 @@
         function sanitizeControls() {
             const interval = clamp(Number(intervalInput.value || intervalSlider.value), 1, 720);
             const group = clamp(Number(groupInput.value || groupSlider.value), 1, 1440);
+            const compareDays = clamp(Number(compareDaysInput.value || compareDaysSlider.value), 1, 30);
 
             intervalSlider.value = interval;
             intervalInput.value = interval;
@@ -834,21 +849,50 @@
             groupInput.value = group;
             groupValueSpan.textContent = group;
 
+            compareDaysSlider.value = compareDays;
+            compareDaysInput.value = compareDays;
+            compareDaysValueSpan.textContent = compareDays;
+
             saveChartPrefs();
 
-            return { interval, group };
+            return { interval, group, compareDays };
         }
 
         async function updateGraph() {
             const controls = sanitizeControls();
 
-            const response = await fetch(`/dash_data?interval=${controls.interval}&group=${controls.group}`);
+            const [response, compareResponse] = await Promise.all([
+                fetch(`/dash_data?interval=${controls.interval}&group=${controls.group}`),
+                fetch(`/dash_compare?interval=${controls.interval}&group=${controls.group}&days=${controls.compareDays}`)
+            ]);
+
             const data = await response.json();
+
+            let comparePayload = {
+                days_requested: controls.compareDays,
+                days_available: 0,
+                points: []
+            };
+
+            if (compareResponse.ok) {
+                comparePayload = await compareResponse.json();
+            }
+
+            const compareByTimestamp = new Map();
+            (comparePayload.points || []).forEach(point => {
+                const timestamp = new Date(point.timestamp);
+                if (!Number.isNaN(timestamp.getTime())) {
+                    compareByTimestamp.set(timestamp.getTime(), point);
+                }
+            });
 
             const timestamps = [];
             const amountsUsed = [];
             const estimatedWatts = [];
+            const compareAmounts = [];
+            const compareWatts = [];
             const hoverTexts = [];
+            const compareHoverTexts = [];
 
             data.forEach(record => {
                 const timestamp = new Date(record.timestamp);
@@ -860,11 +904,26 @@
 
                 const amount = amountNumber.toFixed(2);
                 const derivedWatts = ((amountNumber * 60) / (TARIFF_RUPEE_PER_KWH * controls.group) * 1000).toFixed(2);
+                const comparePoint = compareByTimestamp.get(timestamp.getTime());
 
                 timestamps.push(timestamp);
                 amountsUsed.push(amountNumber);
                 estimatedWatts.push(Number(derivedWatts));
                 hoverTexts.push(`${timestamp.toLocaleString()}, Amount: ₹${amount}, Power: ${derivedWatts} W`);
+
+                const avgAmount = Number(comparePoint?.avg_amount_used);
+                const sampleCount = Number(comparePoint?.sample_count || 0);
+
+                if (Number.isFinite(avgAmount)) {
+                    const compareDerivedWatts = ((avgAmount * 60) / (TARIFF_RUPEE_PER_KWH * controls.group) * 1000).toFixed(2);
+                    compareAmounts.push(avgAmount);
+                    compareWatts.push(Number(compareDerivedWatts));
+                    compareHoverTexts.push(`${timestamp.toLocaleString()}, Avg Amount: ₹${avgAmount.toFixed(2)}, Avg Power: ${compareDerivedWatts} W, Samples: ${sampleCount}`);
+                } else {
+                    compareAmounts.push(null);
+                    compareWatts.push(null);
+                    compareHoverTexts.push(`${timestamp.toLocaleString()}, No historical sample in comparison window`);
+                }
             });
 
             const textColor = getCssVar('--text-primary');
@@ -872,6 +931,11 @@
             const accent = getCssVar('--accent');
 
             const traces = [];
+            const hasCompareSeries = compareAmounts.some(value => Number.isFinite(value));
+            const compareDaysAvailable = Number(comparePayload.days_available || 0);
+            const compareLabel = compareDaysAvailable > 0
+                ? `Avg last ${compareDaysAvailable} day${compareDaysAvailable === 1 ? '' : 's'}`
+                : `Avg last ${controls.compareDays} days`;
 
             const rupeeTrace = {
                 x: timestamps,
@@ -884,6 +948,24 @@
                 text: hoverTexts,
                 hoverinfo: 'text',
                 yaxis: 'y',
+                hoverlabel: {
+                    bgcolor: getCssVar('--bg-elevated'),
+                    bordercolor: getCssVar('--border'),
+                    font: { color: textColor, size: 12 }
+                }
+            };
+
+            const rupeeCompareTrace = {
+                x: timestamps,
+                y: compareAmounts,
+                type: 'scatter',
+                mode: 'lines',
+                name: `${compareLabel} (₹)`,
+                line: { color: '#34d399', width: 2, dash: 'dash' },
+                text: compareHoverTexts,
+                hoverinfo: 'text',
+                yaxis: 'y',
+                connectgaps: false,
                 hoverlabel: {
                     bgcolor: getCssVar('--bg-elevated'),
                     bordercolor: getCssVar('--border'),
@@ -909,18 +991,47 @@
                 }
             };
 
+            const wattsCompareTrace = {
+                x: timestamps,
+                y: compareWatts,
+                type: 'scatter',
+                mode: 'lines',
+                name: `${compareLabel} (W)`,
+                line: { color: '#fbbf24', width: 2, dash: 'dash' },
+                text: compareHoverTexts,
+                hoverinfo: 'text',
+                yaxis: chartMode === 'both' ? 'y2' : 'y',
+                connectgaps: false,
+                hoverlabel: {
+                    bgcolor: getCssVar('--bg-elevated'),
+                    bordercolor: getCssVar('--border'),
+                    font: { color: textColor, size: 12 }
+                }
+            };
+
             if (chartMode === 'rupee' || chartMode === 'both') {
                 traces.push(rupeeTrace);
+                if (hasCompareSeries) {
+                    traces.push(rupeeCompareTrace);
+                }
             }
 
             if (chartMode === 'watts' || chartMode === 'both') {
                 traces.push(wattsTrace);
+                if (hasCompareSeries) {
+                    traces.push(wattsCompareTrace);
+                }
             }
 
             const yAxisTitle = chartMode === 'watts' ? 'Estimated Power (W)' : 'Amount Used (₹)';
 
             const layout = {
-                title: { text: chartMode === 'both' ? 'Usage Trend (₹ + W)' : 'Usage Trend', font: { color: textColor, size: 16 } },
+                title: {
+                    text: chartMode === 'both'
+                        ? `Usage Trend (₹ + W) • Compare with last ${controls.compareDays} days`
+                        : `Usage Trend • Compare with last ${controls.compareDays} days`,
+                    font: { color: textColor, size: 16 }
+                },
                 paper_bgcolor: 'transparent',
                 plot_bgcolor: 'transparent',
                 font: { color: textColor },
@@ -936,7 +1047,7 @@
                     gridcolor: gridColor,
                     zerolinecolor: gridColor
                 },
-                showlegend: chartMode === 'both'
+                showlegend: traces.length > 1
             };
 
             if (chartMode === 'both') {
@@ -976,6 +1087,12 @@
             updateGraphDebounced();
         });
 
+        compareDaysSlider.addEventListener('input', () => {
+            compareDaysInput.value = compareDaysSlider.value;
+            saveChartPrefs();
+            updateGraphDebounced();
+        });
+
         intervalInput.addEventListener('change', () => {
             saveChartPrefs();
             updateGraphDebounced();
@@ -989,6 +1106,14 @@
             updateGraphDebounced();
         });
         groupInput.addEventListener('blur', () => {
+            saveChartPrefs();
+            updateGraphDebounced();
+        });
+        compareDaysInput.addEventListener('change', () => {
+            saveChartPrefs();
+            updateGraphDebounced();
+        });
+        compareDaysInput.addEventListener('blur', () => {
             saveChartPrefs();
             updateGraphDebounced();
         });

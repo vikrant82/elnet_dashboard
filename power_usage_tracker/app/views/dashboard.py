@@ -140,19 +140,75 @@ def get_recent_present_loads(database_path, minutes=15, limit=180):
             conn.close()
 
 
+def get_bucketed_amount_usage(
+    database_path, interval_start_utc, interval_end_utc, group_minutes
+):
+    """Fetch grouped amount-used rows for a UTC interval."""
+    conn = None
+    try:
+        conn = sqlite3.connect(database_path)
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT
+                strftime('%Y-%m-%d %H:%M', timestamp, '-' ||
+                    (strftime('%M', timestamp) % ?) || ' minutes') AS bucket,
+                SUM(amount_used) AS total_amount_used
+            FROM power_usage
+            WHERE timestamp >= ?
+              AND timestamp <= ?
+            GROUP BY bucket
+            ORDER BY bucket
+            """,
+            (
+                group_minutes,
+                interval_start_utc.replace(tzinfo=None),
+                interval_end_utc.replace(tzinfo=None),
+            ),
+        )
+
+        records = c.fetchall()
+        parsed_records = []
+
+        for bucket_str, total_amount_used in records:
+            try:
+                bucket_time = datetime.strptime(bucket_str, "%Y-%m-%d %H:%M")
+                parsed_records.append((bucket_time, float(total_amount_used or 0)))
+            except (TypeError, ValueError):
+                continue
+
+        return parsed_records
+    except sqlite3.Error as e:
+        logger.error(f"Database error fetching bucketed amount usage: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def serialize_bucket_amount_rows(rows):
+    """Serialize bucketed rows into dashboard chart JSON format."""
+    data = []
+    for bucket_time, amount_used in rows:
+        bucket_utc = pytz.utc.localize(bucket_time)
+        data.append(
+            {
+                "timestamp": bucket_utc.strftime("%a, %d %b %Y %H:%M:%S GMT"),
+                "amount_used": float(amount_used),
+            }
+        )
+    return data
+
+
 def create_dashboard_bp(api_client, config, state=None):
     dashboard_bp = Blueprint("dashboard", __name__)
 
     @dashboard_bp.route("/dash_data")
     def dashboard():
-        conn = None
         try:
-            conn = sqlite3.connect(config.DATABASE)
-            c = conn.cursor()
-
             try:
-                interval_hours = min(int(request.args.get("interval", 24)), 720)
-                group_minutes = min(int(request.args.get("group", 30)), 1440)
+                interval_hours = min(max(int(request.args.get("interval", 24)), 1), 720)
+                group_minutes = min(max(int(request.args.get("group", 30)), 1), 1440)
             except ValueError:
                 return jsonify({"error": "Invalid interval or group parameter"}), 400
 
@@ -162,49 +218,90 @@ def create_dashboard_bp(api_client, config, state=None):
             logger.debug(f"Interval hours: {interval_hours}")
             logger.debug(f"Interval start time (UTC): {interval_start_utc}")
 
-            query = """
-                SELECT
-                    strftime('%Y-%m-%d %H:%M', timestamp, '-' ||
-                        (strftime('%M', timestamp) % ?) || ' minutes') AS bucket,
-                    SUM(amount_used) AS total_amount_used
-                FROM power_usage
-                WHERE timestamp >= ?
-                GROUP BY bucket
-                ORDER BY bucket
-            """
+            rows = get_bucketed_amount_usage(
+                config.DATABASE,
+                interval_start_utc,
+                now_utc,
+                group_minutes,
+            )
 
-            c.execute(query, (group_minutes, interval_start_utc.replace(tzinfo=None)))
-            records = c.fetchall()
+            return jsonify(serialize_bucket_amount_rows(rows))
 
-            data = []
-            for record in records:
-                try:
-                    bucket_time = datetime.strptime(record[0], "%Y-%m-%d %H:%M")
-                    bucket_utc = pytz.utc.localize(bucket_time)
-
-                    data.append(
-                        {
-                            "timestamp": bucket_utc.strftime(
-                                "%a, %d %b %Y %H:%M:%S GMT"
-                            ),
-                            "amount_used": float(record[1]),
-                        }
-                    )
-                except (ValueError, TypeError) as e:
-                    logger.error(f"Bucket parsing error: {e}")
-                    continue
-
-            return jsonify(data)
-
-        except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
-            return jsonify({"error": "Database error"}), 500
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             return jsonify({"error": "Internal server error"}), 500
-        finally:
-            if conn:
-                conn.close()
+
+    @dashboard_bp.route("/dash_compare")
+    def dash_compare():
+        """Return historical averaged comparison series for chart overlay."""
+        try:
+            try:
+                interval_hours = min(max(int(request.args.get("interval", 24)), 1), 720)
+                group_minutes = min(max(int(request.args.get("group", 30)), 1), 1440)
+                compare_days = min(max(int(request.args.get("days", 7)), 1), 30)
+            except ValueError:
+                return (
+                    jsonify({"error": "Invalid interval, group, or days parameter"}),
+                    400,
+                )
+
+            now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
+            interval_start_utc = now_utc - timedelta(hours=interval_hours)
+
+            current_rows = get_bucketed_amount_usage(
+                config.DATABASE,
+                interval_start_utc,
+                now_utc,
+                group_minutes,
+            )
+
+            historical_rows = get_bucketed_amount_usage(
+                config.DATABASE,
+                interval_start_utc - timedelta(days=compare_days),
+                now_utc - timedelta(days=1),
+                group_minutes,
+            )
+            historical_map = {
+                bucket_time: amount for bucket_time, amount in historical_rows
+            }
+
+            points = []
+            day_offsets_with_data = set()
+
+            for bucket_time, _ in current_rows:
+                historical_values = []
+                for day_offset in range(1, compare_days + 1):
+                    shifted_bucket = bucket_time - timedelta(days=day_offset)
+                    amount = historical_map.get(shifted_bucket)
+                    if amount is None:
+                        continue
+                    historical_values.append(amount)
+                    day_offsets_with_data.add(day_offset)
+
+                avg_amount_used = None
+                if historical_values:
+                    avg_amount_used = sum(historical_values) / len(historical_values)
+
+                points.append(
+                    {
+                        "timestamp": pytz.utc.localize(bucket_time).strftime(
+                            "%a, %d %b %Y %H:%M:%S GMT"
+                        ),
+                        "avg_amount_used": avg_amount_used,
+                        "sample_count": len(historical_values),
+                    }
+                )
+
+            return jsonify(
+                {
+                    "days_requested": compare_days,
+                    "days_available": len(day_offsets_with_data),
+                    "points": points,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error in dash_compare: {e}")
+            return jsonify({"error": "Internal server error"}), 500
 
     @dashboard_bp.route("/live_status")
     def live_status():

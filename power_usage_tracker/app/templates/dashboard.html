@@ -417,6 +417,123 @@
                 line-height: 1.2;
             }
         }
+
+        /* Session Stopwatch Card */
+        .card-session {
+            border: 1px solid var(--border);
+            margin-top: 16px;
+        }
+
+        .session-idle,
+        .session-running,
+        .session-stopped {
+            display: none;
+        }
+
+        .card-session.state-idle .session-idle { display: block; }
+        .card-session.state-running .session-running { display: block; }
+        .card-session.state-stopped .session-stopped { display: block; }
+
+        .session-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin: 12px 0;
+        }
+
+        .session-stat {
+            text-align: center;
+            padding: 10px 6px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .session-stat .stat-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .session-stat .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        .session-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+
+        .session-btn:hover {
+            opacity: 0.85;
+        }
+
+        .session-btn-start {
+            background: #22c55e;
+            color: #fff;
+        }
+
+        .session-btn-stop {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        .session-btn-clear {
+            background: var(--border);
+            color: var(--text-primary);
+        }
+
+        .session-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .session-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .session-header h2 {
+            margin: 0;
+        }
+
+        .session-pulse {
+            width: 10px;
+            height: 10px;
+            background: #22c55e;
+            border-radius: 50%;
+            animation: pulse 1.2s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.15); }
+        }
+
+        .session-elapsed {
+            font-size: 2rem;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-primary);
+            margin: 8px 0;
+        }
+
+        .session-start-info {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
     </style>
 </head>
 <body data-theme="dark">
@@ -438,6 +555,65 @@
                 <p id="liveMetaText" class="muted">Dial range: 0–3.5 kW (0–3500 W)</p>
                 <div id="live-load-sparkline"></div>
                 <p id="sparklineTrendText" class="muted">Live trend: awaiting data…</p>
+
+                <div class="card card-session state-idle" id="sessionCard">
+                    <div class="session-idle">
+                        <h2>⏱ Usage Session</h2>
+                        <p class="muted">Track power usage for a specific activity</p>
+                        <button class="session-btn session-btn-start" onclick="startSession()">Start Session</button>
+                    </div>
+
+                    <div class="session-running">
+                        <div class="session-header">
+                            <div class="session-pulse"></div>
+                            <h2>Session Active</h2>
+                        </div>
+                        <p class="session-start-info" id="sessionStartInfo">Started at --</p>
+                        <div class="session-elapsed" id="sessionElapsed">00:00:00</div>
+                        <div class="session-stats">
+                            <div class="session-stat">
+                                <div class="stat-value" id="sessionAmountUsed">₹0.00</div>
+                                <div class="stat-label">Amount Used</div>
+                            </div>
+                            <div class="session-stat">
+                                <div class="stat-value" id="sessionAvgLoad">0 W</div>
+                                <div class="stat-label">Avg Load</div>
+                            </div>
+                            <div class="session-stat">
+                                <div class="stat-value" id="sessionPeakLoad">0 W</div>
+                                <div class="stat-label">Peak Load</div>
+                            </div>
+                            <div class="session-stat">
+                                <div class="stat-value" id="sessionSamples">0</div>
+                                <div class="stat-label">Samples</div>
+                            </div>
+                        </div>
+                        <button class="session-btn session-btn-stop" onclick="stopSession()">Stop Session</button>
+                    </div>
+
+                    <div class="session-stopped">
+                        <h2>✓ Session Complete</h2>
+                        <p class="session-start-info" id="sessionSummaryInfo">Duration: --</p>
+                        <div class="session-stats">
+                            <div class="session-stat">
+                                <div class="stat-value" id="sessionFinalAmount">₹0.00</div>
+                                <div class="stat-label">Total Used</div>
+                            </div>
+                            <div class="session-stat">
+                                <div class="stat-value" id="sessionFinalAvgLoad">0 W</div>
+                                <div class="stat-label">Avg Load</div>
+                            </div>
+                            <div class="session-stat">
+                                <div class="stat-value" id="sessionFinalPeakLoad">0 W</div>
+                                <div class="stat-label">Peak Load</div>
+                            </div>
+                        </div>
+                        <div class="session-actions">
+                            <button class="session-btn session-btn-start" onclick="startSession()">New Session</button>
+                            <button class="session-btn session-btn-clear" onclick="clearSession()">Clear</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="card card-status">
@@ -596,6 +772,22 @@
         let lastLiveStale = true;
         let chartMode = 'watts';
 
+        const SESSION_KEY = 'dashboard_session';
+        let sessionState = null;
+        let sessionElapsedInterval = null;
+
+        const sessionCardEl = document.getElementById('sessionCard');
+        const sessionElapsedEl = document.getElementById('sessionElapsed');
+        const sessionStartInfoEl = document.getElementById('sessionStartInfo');
+        const sessionAmountUsedEl = document.getElementById('sessionAmountUsed');
+        const sessionAvgLoadEl = document.getElementById('sessionAvgLoad');
+        const sessionPeakLoadEl = document.getElementById('sessionPeakLoad');
+        const sessionSamplesEl = document.getElementById('sessionSamples');
+        const sessionSummaryInfoEl = document.getElementById('sessionSummaryInfo');
+        const sessionFinalAmountEl = document.getElementById('sessionFinalAmount');
+        const sessionFinalAvgLoadEl = document.getElementById('sessionFinalAvgLoad');
+        const sessionFinalPeakLoadEl = document.getElementById('sessionFinalPeakLoad');
+
         function saveChartPrefs() {
             const prefs = {
                 interval: Number(intervalSlider.value),
@@ -685,6 +877,176 @@
 
             saveChartPrefs();
             updateGraphDebounced();
+        }
+
+        function formatDuration(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function saveSessionState() {
+            if (sessionState) {
+                localStorage.setItem(SESSION_KEY, JSON.stringify(sessionState));
+            } else {
+                localStorage.removeItem(SESSION_KEY);
+            }
+        }
+
+        function loadSessionState() {
+            try {
+                const raw = localStorage.getItem(SESSION_KEY);
+                if (!raw) return null;
+                return JSON.parse(raw);
+            } catch (_e) {
+                return null;
+            }
+        }
+
+        function setSessionCardState(state) {
+            sessionCardEl.classList.remove('state-idle', 'state-running', 'state-stopped');
+            sessionCardEl.classList.add(`state-${state}`);
+        }
+
+        function updateSessionDisplay() {
+            if (!sessionState) return;
+
+            const elapsed = Date.now() - sessionState.startTimestamp;
+            sessionElapsedEl.textContent = formatDuration(elapsed);
+
+            const amountUsed = sessionState.startBalance - sessionState.currentBalance;
+            sessionAmountUsedEl.textContent = `₹${Math.max(0, amountUsed).toFixed(2)}`;
+
+            if (sessionState.samples.length > 0) {
+                const sum = sessionState.samples.reduce((acc, s) => acc + s.loadW, 0);
+                const avg = sum / sessionState.samples.length;
+                sessionAvgLoadEl.textContent = `${Math.round(avg)} W`;
+            } else {
+                sessionAvgLoadEl.textContent = '0 W';
+            }
+
+            sessionPeakLoadEl.textContent = `${Math.round(sessionState.peakLoadW)} W`;
+            sessionSamplesEl.textContent = sessionState.samples.length;
+        }
+
+        function startSessionElapsedTimer() {
+            stopSessionElapsedTimer();
+            sessionElapsedInterval = setInterval(updateSessionDisplay, 1000);
+        }
+
+        function stopSessionElapsedTimer() {
+            if (sessionElapsedInterval) {
+                clearInterval(sessionElapsedInterval);
+                sessionElapsedInterval = null;
+            }
+        }
+
+        function startSession() {
+            const currentBalance = parseFloat((meterBalanceEl.textContent || '').replace(/[^\d.]/g, '')) || 0;
+
+            sessionState = {
+                startTimestamp: Date.now(),
+                startBalance: currentBalance,
+                currentBalance: currentBalance,
+                samples: [],
+                peakLoadW: 0,
+                running: true
+            };
+
+            saveSessionState();
+            setSessionCardState('running');
+            sessionStartInfoEl.textContent = `Started at ${new Date(sessionState.startTimestamp).toLocaleTimeString()}`;
+            updateSessionDisplay();
+            startSessionElapsedTimer();
+        }
+
+        function stopSession() {
+            if (!sessionState || !sessionState.running) return;
+
+            sessionState.running = false;
+            sessionState.endTimestamp = Date.now();
+            saveSessionState();
+            stopSessionElapsedTimer();
+
+            const elapsed = sessionState.endTimestamp - sessionState.startTimestamp;
+            const amountUsed = Math.max(0, sessionState.startBalance - sessionState.currentBalance);
+
+            sessionSummaryInfoEl.textContent = `Duration: ${formatDuration(elapsed)} • ${new Date(sessionState.startTimestamp).toLocaleTimeString()} → ${new Date(sessionState.endTimestamp).toLocaleTimeString()}`;
+
+            sessionFinalAmountEl.textContent = `₹${amountUsed.toFixed(2)}`;
+
+            if (sessionState.samples.length > 0) {
+                const sum = sessionState.samples.reduce((acc, s) => acc + s.loadW, 0);
+                const avg = sum / sessionState.samples.length;
+                sessionFinalAvgLoadEl.textContent = `${Math.round(avg)} W`;
+            } else {
+                sessionFinalAvgLoadEl.textContent = '0 W';
+            }
+
+            sessionFinalPeakLoadEl.textContent = `${Math.round(sessionState.peakLoadW)} W`;
+
+            setSessionCardState('stopped');
+        }
+
+        function clearSession() {
+            sessionState = null;
+            saveSessionState();
+            stopSessionElapsedTimer();
+            setSessionCardState('idle');
+        }
+
+        function recordSessionSample(loadKw, balance) {
+            if (!sessionState || !sessionState.running) return;
+
+            const loadW = loadKw * 1000;
+            sessionState.samples.push({
+                ts: Date.now(),
+                loadW: loadW
+            });
+            sessionState.currentBalance = balance;
+
+            if (loadW > sessionState.peakLoadW) {
+                sessionState.peakLoadW = loadW;
+            }
+
+            saveSessionState();
+            updateSessionDisplay();
+        }
+
+        function restoreSession() {
+            const saved = loadSessionState();
+            if (!saved) {
+                setSessionCardState('idle');
+                return;
+            }
+
+            sessionState = saved;
+
+            if (sessionState.running) {
+                setSessionCardState('running');
+                sessionStartInfoEl.textContent = `Started at ${new Date(sessionState.startTimestamp).toLocaleTimeString()}`;
+                updateSessionDisplay();
+                startSessionElapsedTimer();
+            } else {
+                const elapsed = sessionState.endTimestamp - sessionState.startTimestamp;
+                const amountUsed = Math.max(0, sessionState.startBalance - sessionState.currentBalance);
+
+                sessionSummaryInfoEl.textContent = `Duration: ${formatDuration(elapsed)} • ${new Date(sessionState.startTimestamp).toLocaleTimeString()} → ${new Date(sessionState.endTimestamp).toLocaleTimeString()}`;
+                sessionFinalAmountEl.textContent = `₹${amountUsed.toFixed(2)}`;
+
+                if (sessionState.samples.length > 0) {
+                    const sum = sessionState.samples.reduce((acc, s) => acc + s.loadW, 0);
+                    const avg = sum / sessionState.samples.length;
+                    sessionFinalAvgLoadEl.textContent = `${Math.round(avg)} W`;
+                } else {
+                    sessionFinalAvgLoadEl.textContent = '0 W';
+                }
+
+                sessionFinalPeakLoadEl.textContent = `${Math.round(sessionState.peakLoadW)} W`;
+                setSessionCardState('stopped');
+            }
         }
 
         function renderSparkline(points) {
@@ -884,6 +1246,10 @@
                 }
 
                 updatePowerSource(Boolean(data.is_dg_on), data.duration || '');
+
+                if (!isStale && Number.isFinite(loadKw) && Number.isFinite(data.balance)) {
+                    recordSessionSample(loadKw, data.balance);
+                }
 
                 if (isStale) {
                     const age = Number(data.age_seconds);
@@ -1176,6 +1542,7 @@
 
         const storedTheme = localStorage.getItem(THEME_KEY);
         loadChartPrefs();
+        restoreSession();
         applyTheme(storedTheme || 'dark');
         setChartMode(chartMode);
         sanitizeControls();

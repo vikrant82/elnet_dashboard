@@ -156,7 +156,7 @@ def get_bucketed_amount_usage(
             """
             SELECT
                 strftime('%Y-%m-%d %H:%M', timestamp, '-' ||
-                    (strftime('%M', timestamp) % ?) || ' minutes') AS bucket,
+                    (strftime('%s', timestamp) % (? * 60)) || ' seconds') AS bucket,
                 SUM(amount_used) AS total_amount_used
             FROM power_usage
             WHERE timestamp >= ?

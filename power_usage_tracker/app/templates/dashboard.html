@@ -165,6 +165,10 @@
             grid-column: 1 / -1;
         }
 
+        .card-daily-usage {
+            grid-column: 1 / -1;
+        }
+
         .card-compact {
             padding: 12px;
         }
@@ -205,6 +209,11 @@
             width: 100%;
             height: 120px;
             margin-top: 8px;
+        }
+
+        #daily-usage-chart {
+            width: 100%;
+            height: 240px;
         }
 
         .status-pill {
@@ -384,8 +393,16 @@
                 grid-column: span 1;
             }
 
+            .card-daily-usage {
+                grid-column: span 1;
+            }
+
             #amount-used-graph {
                 height: 420px;
+            }
+
+            #daily-usage-chart {
+                height: 220px;
             }
 
             .chart-legend-mobile {
@@ -616,6 +633,12 @@
                 </div>
             </div>
 
+            <div class="card card-daily-usage">
+                <h2>Last 7 Days Usage</h2>
+                <div id="daily-usage-chart"></div>
+                <p id="dailyUsageSummary" class="muted">IST day totals: today so far + previous 6 days.</p>
+            </div>
+
             <div class="card card-status">
                 <h2>Current Status</h2>
                 <div class="stat-row">
@@ -741,6 +764,7 @@
         const THEME_KEY = 'dashboard_theme';
         const CHART_PREFS_KEY = 'dashboard_chart_prefs';
         const LIVE_REFRESH_MS = 10000;
+        const DAILY_USAGE_REFRESH_MS = 60000;
 
         const intervalSlider = document.getElementById('intervalSlider');
         const groupSlider = document.getElementById('groupSlider');
@@ -767,6 +791,7 @@
         const liveStaleIndicatorEl = document.getElementById('liveStaleIndicator');
         const liveMetaTextEl = document.getElementById('liveMetaText');
         const sparklineTrendTextEl = document.getElementById('sparklineTrendText');
+        const dailyUsageSummaryEl = document.getElementById('dailyUsageSummary');
 
         let lastLiveKw = 0;
         let lastLiveStale = true;
@@ -866,6 +891,7 @@
             updateGraphDebounced();
             renderLiveDial(lastLiveKw, lastLiveStale);
             updateLiveTrend();
+            updateDailyUsage();
         }
 
         function setChartMode(mode) {
@@ -1148,6 +1174,113 @@
                 renderSparkline(data.points || []);
             } catch (_error) {
                 renderSparkline([]);
+            }
+        }
+
+        function renderDailyUsage(points, timezone) {
+            const textColor = getCssVar('--text-primary');
+            const secondaryTextColor = getCssVar('--text-secondary');
+            const gridColor = getCssVar('--grid-color');
+            const accent = getCssVar('--accent');
+
+            if (!Array.isArray(points) || points.length === 0) {
+                Plotly.react('daily-usage-chart', [], {
+                    paper_bgcolor: 'transparent',
+                    plot_bgcolor: 'transparent',
+                    xaxis: { visible: false },
+                    yaxis: { visible: false },
+                    annotations: [
+                        {
+                            text: 'No daily usage data available',
+                            showarrow: false,
+                            font: { color: secondaryTextColor, size: 12 }
+                        }
+                    ],
+                    margin: { l: 10, r: 10, t: 8, b: 8 }
+                }, {
+                    displayModeBar: false,
+                    responsive: true
+                });
+                dailyUsageSummaryEl.textContent = 'IST day totals: today so far + previous 6 days.';
+                return;
+            }
+
+            const labels = [];
+            const values = [];
+            const hoverText = [];
+            let total = 0;
+
+            points.forEach(point => {
+                const amount = Number(point.amount_used);
+                const safeAmount = Number.isFinite(amount) ? amount : 0;
+                labels.push(point.is_today ? 'Today' : point.label);
+                values.push(safeAmount);
+                hoverText.push(`${point.display_date || point.date}<br>Usage: ₹${safeAmount.toFixed(2)}${point.is_today ? '<br>Today so far' : ''}`);
+                total += safeAmount;
+            });
+
+            const barColors = points.map(point => point.is_today ? '#f59e0b' : accent);
+
+            const trace = [
+                {
+                    x: labels,
+                    y: values,
+                    type: 'bar',
+                    marker: {
+                        color: barColors,
+                        line: { color: 'rgba(255,255,255,0.18)', width: 1 }
+                    },
+                    text: values.map(value => `₹${value.toFixed(0)}`),
+                    textposition: 'outside',
+                    cliponaxis: false,
+                    hovertemplate: '%{customdata}<extra></extra>',
+                    customdata: hoverText
+                }
+            ];
+
+            const layout = {
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                font: { color: textColor },
+                margin: { l: 54, r: 16, t: 18, b: 44 },
+                xaxis: {
+                    tickfont: { color: secondaryTextColor },
+                    gridcolor: gridColor,
+                    zerolinecolor: gridColor
+                },
+                yaxis: {
+                    title: { text: 'Amount (₹)', font: { color: secondaryTextColor, size: 11 } },
+                    tickformat: '.0f',
+                    gridcolor: gridColor,
+                    zerolinecolor: gridColor,
+                    rangemode: 'tozero'
+                },
+                showlegend: false,
+                bargap: 0.24
+            };
+
+            Plotly.react('daily-usage-chart', trace, layout, {
+                displayModeBar: false,
+                responsive: true
+            });
+
+            const today = points[points.length - 1];
+            const todayAmount = Number(today?.amount_used || 0);
+            const timezoneLabel = timezone === 'Asia/Kolkata' ? 'IST' : timezone;
+            dailyUsageSummaryEl.textContent = `${timezoneLabel} daily total: ₹${total.toFixed(2)} over ${points.length} days • Today so far: ₹${todayAmount.toFixed(2)}`;
+        }
+
+        async function updateDailyUsage() {
+            try {
+                const response = await fetch('/daily_usage?days=7', { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                renderDailyUsage(data.points || [], data.timezone || 'Asia/Kolkata');
+            } catch (_error) {
+                renderDailyUsage([], 'Asia/Kolkata');
             }
         }
 
@@ -1549,8 +1682,10 @@
         updateGraphDebounced();
         updateLiveStatus();
         updateLiveTrend();
+        updateDailyUsage();
         setInterval(updateLiveStatus, LIVE_REFRESH_MS);
         setInterval(updateLiveTrend, LIVE_REFRESH_MS);
+        setInterval(updateDailyUsage, DAILY_USAGE_REFRESH_MS);
     </script>
 </body>
 </html>

@@ -6,6 +6,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+LOCAL_DAILY_USAGE_TIMEZONE = "Asia/Kolkata"
+
 
 def format_duration(delta):
     """Format a timedelta as a compact hours/minutes string."""
@@ -193,6 +195,67 @@ def get_bucketed_amount_usage(
             conn.close()
 
 
+def get_daily_amount_usage(
+    database_path, days=7, timezone_name=LOCAL_DAILY_USAGE_TIMEZONE
+):
+    """Fetch today-so-far plus previous local-day amount-used totals.
+
+    Database timestamps are stored as naive UTC values. Daily windows are
+    aligned to local midnight in ``timezone_name`` and converted to UTC for
+    indexed half-open range queries.
+    """
+    timezone = pytz.timezone(timezone_name)
+    now_local = datetime.now(timezone)
+    today_start_local = timezone.localize(
+        datetime(now_local.year, now_local.month, now_local.day)
+    )
+
+    conn = None
+    try:
+        conn = sqlite3.connect(database_path)
+        c = conn.cursor()
+
+        rows = []
+        for day_offset in range(days - 1, -1, -1):
+            day_start_local = today_start_local - timedelta(days=day_offset)
+            next_day_start_local = day_start_local + timedelta(days=1)
+            day_end_local = now_local if day_offset == 0 else next_day_start_local
+
+            day_start_utc = day_start_local.astimezone(pytz.utc).replace(tzinfo=None)
+            day_end_utc = day_end_local.astimezone(pytz.utc).replace(tzinfo=None)
+            day_start_db = day_start_utc.strftime("%Y-%m-%d %H:%M:%S")
+            day_end_db = day_end_utc.strftime("%Y-%m-%d %H:%M:%S")
+
+            c.execute(
+                """
+                SELECT COALESCE(SUM(amount_used), 0)
+                FROM power_usage
+                WHERE timestamp >= ?
+                  AND timestamp < ?
+                """,
+                (day_start_db, day_end_db),
+            )
+            total_amount_used = c.fetchone()[0] or 0
+
+            rows.append(
+                {
+                    "date": day_start_local.strftime("%Y-%m-%d"),
+                    "label": day_start_local.strftime("%a"),
+                    "display_date": day_start_local.strftime("%a, %d %b"),
+                    "amount_used": float(total_amount_used),
+                    "is_today": day_offset == 0,
+                }
+            )
+
+        return rows
+    except sqlite3.Error as e:
+        logger.error(f"Database error fetching daily amount usage: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 def serialize_bucket_amount_rows(rows):
     """Serialize bucketed rows into dashboard chart JSON format."""
     data = []
@@ -308,6 +371,25 @@ def create_dashboard_bp(api_client, config, state=None):
             )
         except Exception as e:
             logger.error(f"Unexpected error in dash_compare: {e}")
+            return jsonify({"error": "Internal server error"}), 500
+
+    @dashboard_bp.route("/daily_usage")
+    def daily_usage():
+        """Return local-day amount-used totals for the last few days."""
+        try:
+            try:
+                days = min(max(int(request.args.get("days", 7)), 1), 30)
+            except ValueError:
+                return jsonify({"error": "Invalid days parameter"}), 400
+
+            return jsonify(
+                {
+                    "timezone": LOCAL_DAILY_USAGE_TIMEZONE,
+                    "points": get_daily_amount_usage(config.DATABASE, days=days),
+                }
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error in daily_usage: {e}")
             return jsonify({"error": "Internal server error"}), 500
 
     @dashboard_bp.route("/live_status")
